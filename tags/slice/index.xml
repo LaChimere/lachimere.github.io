@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Golangs on LaChimere</title>
-    <link>https://lachimere.github.io/golang/</link>
-    <description>Recent content in Golangs on LaChimere</description>
+    <title>slice on LaChimere</title>
+    <link>https://lachimere.github.io/tags/slice/</link>
+    <description>Recent content in slice on LaChimere</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Tue, 23 Mar 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://lachimere.github.io/golang/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 23 Mar 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://lachimere.github.io/tags/slice/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>深入讨论 Slice</title>
       <link>https://lachimere.github.io/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/</link>
