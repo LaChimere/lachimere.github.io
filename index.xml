@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>LaChimere</title>
+    <link>https://lachimere.github.io/</link>
+    <description>Recent content on LaChimere</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-cn</language>
+    <lastBuildDate>Tue, 23 Mar 2021 14:54:54 +0800</lastBuildDate><atom:link href="https://lachimere.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>深入讨论 Slice</title>
+      <link>https://lachimere.github.io/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/</link>
+      <pubDate>Tue, 23 Mar 2021 14:54:54 +0800</pubDate>
+      
+      <guid>https://lachimere.github.io/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/</guid>
+      <description>1. Slice 定义 在 Go 的源码包中，src/runtime/slice.go 定义了 slice 的数据结构：
+type slice struct { array unsafe.Pointer len int cap int } 其中，array 指向底层数组，len 为 slice 长度，cap 为底层数组容量。
+2. Slice 多种初始化方式的异同   使用变量声明
+var s []int 当采用这种方式声明一个 slice 的时候，需要注意：
+ s 是结构体 slice 的一个实例，其 fields 中 len 和 cap 均为 0，而 array 为 nil； 若输出 s，即 fmt.Println(s)，输出结果为 []； s == nil 为 true，但 &amp;amp;s 会显示一个有效的地址值，表明 s 以存在于内存中。    使用字面量初始化</description>
+    </item>
+    
+  </channel>
+</rss>
