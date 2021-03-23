@@ -145,7 +145,9 @@ type slice struct { array unsafe.Pointer len int cap int } 其中，array 指向
 var s []int 当采用这种方式声明一个 slice 的时候，需要注意：
  s 是结构体 slice 的一个实例，其 fields 中 len 和 cap 均为 0，而 array 为 nil； 若输出 s，即 fmt.Println(s)，输出结果为 []； s == nil 为 true，但 &amp;s 会显示一个有效的地址值，表明 s 以存在于内存中。    使用字面量初始化...</p>
   </section>
-  <footer class="entry-footer">March 23, 2021
+  <footer class="entry-footer">
+
+March 23, 2021&nbsp;·&nbsp;LaChimere
 </footer>
   <a class="entry-link" aria-label="post link to 深入讨论 Slice" href="https://lachimere.github.io/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/"></a>
 </article>
