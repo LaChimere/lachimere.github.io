@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>slice on LaChimere</title>
+    <link>https://lachimere.github.io/tags/slice/</link>
+    <description>Recent content in slice on LaChimere</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <lastBuildDate>Tue, 23 Mar 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://lachimere.github.io/tags/slice/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>深入讨论 Slice</title>
+      <link>https://lachimere.github.io/posts/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/</link>
+      <pubDate>Tue, 23 Mar 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://lachimere.github.io/posts/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/</guid>
+      <description>对 slice 的初始化方式之间的异同点和调用 append() 的具体细节的一些讨论。</description>
+    </item>
+    
+  </channel>
+</rss>
