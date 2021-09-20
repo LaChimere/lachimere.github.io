@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>理解 iota 的取值规则 | LaChimere</title>
+<meta name="keywords" content="iota, const" />
+<meta name="description" content="iota 的取值究竟是什么？">
+<meta name="author" content="LaChimere">
+<link rel="canonical" href="https://lachimere.github.io/posts/golang/%E7%90%86%E8%A7%A3iota%E7%9A%84%E5%8F%96%E5%80%BC%E8%A7%84%E5%88%99/" />
+<link crossorigin="anonymous" href="/assets/css/stylesheet.min.2d6dbfc6e0f8a1db1c9d082a76dc11d094328cf63f247bbc2421dfaa7f2bb170.css" integrity="sha256-LW2/xuD4odscnQgqdtwR0JQyjPY/JHu8JCHfqn8rsXA=" rel="preload stylesheet" as="style">
+<script defer crossorigin="anonymous" src="/assets/js/highlight.min.7680afc38aa6b15ddf158a4f3780b7b1f7dde7e91d26f073e6229bb7a0793c92.js" integrity="sha256-doCvw4qmsV3fFYpPN4C3sffd5&#43;kdJvBz5iKbt6B5PJI="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<link rel="icon" href="https://lachimere.github.io/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://lachimere.github.io/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://lachimere.github.io/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://lachimere.github.io/apple-touch-icon.png">
+<link rel="mask-icon" href="https://lachimere.github.io/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.88.1" />
+<meta property="og:title" content="理解 iota 的取值规则" />
+<meta property="og:description" content="iota 的取值究竟是什么？" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://lachimere.github.io/posts/golang/%E7%90%86%E8%A7%A3iota%E7%9A%84%E5%8F%96%E5%80%BC%E8%A7%84%E5%88%99/" /><meta property="article:section" content="posts" />
+<meta property="article:published_time" content="2021-03-24T00:00:00&#43;00:00" />
+<meta property="article:modified_time" content="2021-03-24T00:00:00&#43;00:00" />
+
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="理解 iota 的取值规则"/>
+<meta name="twitter:description" content="iota 的取值究竟是什么？"/>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Posts",
+      "item": "https://lachimere.github.io/posts/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "理解 iota 的取值规则",
+      "item": "https://lachimere.github.io/posts/golang/%E7%90%86%E8%A7%A3iota%E7%9A%84%E5%8F%96%E5%80%BC%E8%A7%84%E5%88%99/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "理解 iota 的取值规则",
+  "name": "理解 iota 的取值规则",
+  "description": "iota 的取值究竟是什么？",
+  "keywords": [
+    "iota", "const"
+  ],
+  "articleBody": "1. iota 的使用方式 iota 标识符仅能用于常量声明语句中，其取值与 const 语句块中代码的行数强相关。\nconst ( bit0, mask0 = 1  iota, 1  iota - 1\t// iota == 0, bit0 == 0001, mask == 0000  bit1, mask1\t// iota == 1, bit1 == 0010, mask == 0001  _, _\t// iota == 2  bit3, mask3\t// iota == 3, bit3 == 1000, mask == 0111 ) 2. iota 的取值规则 iota 的取值规则只有一条：iota 代表了 const 声明块的行索引（下标从 0 开始）。 const 声明的一个特点是，若为常量指定了一个表达式，而后续的常量没有表达式，则会继承上面的表达式。\n在单个const 声明块中，每增加一行声明，iota 的值增 1，即使声明中没有使用 iota。 由此也可知，在同一行中出现多个 iota，其取值是相同的。\nconst ( A = 100\t// iota == 0, A == 100  B\t// iota == 1, B == 100  C = iota\t// iota == 2, C == 2  D\t// iota == 3, D == 3  _\t// iota == 4  F\t// iota == 5, F == 5  G = 0\t// iota == 6, G == 0  H, I = 42 * iota, iota * iota + 3\t// iota == 7, H == 294, I == 52  J, K\t// iota == 8, J == 336, K == 67 ) ",
+  "wordCount" : "175",
+  "inLanguage": "en",
+  "datePublished": "2021-03-24T00:00:00Z",
+  "dateModified": "2021-03-24T00:00:00Z",
+  "author":{
+    "@type": "Person",
+    "name": "LaChimere"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://lachimere.github.io/posts/golang/%E7%90%86%E8%A7%A3iota%E7%9A%84%E5%8F%96%E5%80%BC%E8%A7%84%E5%88%99/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "LaChimere",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://lachimere.github.io/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: #1d1e20;
+                --entry: #2e2e33;
+                --primary: rgba(255, 255, 255, 0.84);
+                --secondary: rgba(255, 255, 255, 0.56);
+                --tertiary: rgba(255, 255, 255, 0.16);
+                --content: rgba(255, 255, 255, 0.74);
+                --hljs-bg: #2e2e33;
+                --code-bg: #37383e;
+                --border: #333;
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-track {
+                background: 0 0;
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-thumb {
+                border-color: var(--theme);
+            }
+        }
+
+    </style>
+</noscript>
+
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://lachimere.github.io/" accesskey="h" title="LaChimere (Alt + H)">LaChimere</a>
+            <span class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </span>
+        </div>
+        <ul id="menu">
+            <li>
+                <a href="https://lachimere.github.io/archives/" title="Archive">
+                    <span>Archive</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/categories/" title="Categories">
+                    <span>Categories</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/search/" title="Search (Alt &#43; /)" accesskey=/>
+                    <span>Search</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/tags/" title="Tags">
+                    <span>Tags</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <div class="breadcrumbs"><a href="https://lachimere.github.io/">Home</a>&nbsp;»&nbsp;<a href="https://lachimere.github.io/posts/">Posts</a></div>
+    <h1 class="post-title">
+      理解 iota 的取值规则
+    </h1>
+    <div class="post-meta">March 24, 2021&nbsp;·&nbsp;1 min&nbsp;·&nbsp;LaChimere
+</div>
+  </header> <div class="toc">
+    <details >
+        <summary accesskey="c" title="(Alt + C)">
+            <div class="details">Table of Contents</div>
+        </summary>
+        <div class="inner"><ul>
+                <li>
+                    <a href="#1-iota-%e7%9a%84%e4%bd%bf%e7%94%a8%e6%96%b9%e5%bc%8f" aria-label="1. iota 的使用方式">1. <code>iota</code> 的使用方式</a></li>
+                <li>
+                    <a href="#2-iota-%e7%9a%84%e5%8f%96%e5%80%bc%e8%a7%84%e5%88%99" aria-label="2. iota 的取值规则">2. <code>iota</code> 的取值规则</a>
+                </li>
+            </ul>
+        </div>
+    </details>
+</div>
+
+  <div class="post-content"><h2 id="1-iota-的使用方式">1. <code>iota</code> 的使用方式<a hidden class="anchor" aria-hidden="true" href="#1-iota-的使用方式">#</a></h2>
+<p><code>iota</code> 标识符仅能用于常量声明语句中，其取值与 <code>const</code> 语句块中代码的行数强相关。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">const</span> (
+	<span style="color:#a6e22e">bit0</span>, <span style="color:#a6e22e">mask0</span> = <span style="color:#ae81ff">1</span> <span style="color:#f92672">&lt;&lt;</span> <span style="color:#66d9ef">iota</span>, <span style="color:#ae81ff">1</span> <span style="color:#f92672">&lt;&lt;</span> <span style="color:#66d9ef">iota</span> <span style="color:#f92672">-</span> <span style="color:#ae81ff">1</span>	<span style="color:#75715e">// iota == 0, bit0 == 0001, mask == 0000
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">bit1</span>, <span style="color:#a6e22e">mask1</span>								<span style="color:#75715e">// iota == 1, bit1 == 0010, mask == 0001
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">_</span>, <span style="color:#a6e22e">_</span>									<span style="color:#75715e">// iota == 2
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">bit3</span>, <span style="color:#a6e22e">mask3</span>								<span style="color:#75715e">// iota == 3, bit3 == 1000, mask == 0111
+</span><span style="color:#75715e"></span>)
+</code></pre></div><h2 id="2-iota-的取值规则">2. <code>iota</code> 的取值规则<a hidden class="anchor" aria-hidden="true" href="#2-iota-的取值规则">#</a></h2>
+<p><strong><code>iota</code> 的取值规则只有一条：<code>iota</code> 代表了 <code>const</code> 声明块的行索引（下标从 <code>0</code> 开始）。</strong> <code>const</code> 声明的一个特点是，若为常量指定了一个表达式，而后续的常量没有表达式，则会继承上面的表达式。</p>
+<p><strong>在单个<code>const</code> 声明块中，每增加一行声明，<code>iota</code> 的值增 1，即使声明中没有使用 <code>iota</code>。</strong> 由此也可知，在同一行中出现多个 <code>iota</code>，其取值是相同的。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">const</span> (
+	<span style="color:#a6e22e">A</span> = <span style="color:#ae81ff">100</span>								<span style="color:#75715e">// iota == 0, A == 100
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">B</span>									<span style="color:#75715e">// iota == 1, B == 100
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">C</span> = <span style="color:#66d9ef">iota</span>							<span style="color:#75715e">// iota == 2, C == 2
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">D</span>									<span style="color:#75715e">// iota == 3, D == 3
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">_</span>									<span style="color:#75715e">// iota == 4
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">F</span>									<span style="color:#75715e">// iota == 5, F == 5
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">G</span> = <span style="color:#ae81ff">0</span>								<span style="color:#75715e">// iota == 6, G == 0
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">H</span>, <span style="color:#a6e22e">I</span> = <span style="color:#ae81ff">42</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">iota</span>, <span style="color:#66d9ef">iota</span> <span style="color:#f92672">*</span> <span style="color:#66d9ef">iota</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">3</span>	<span style="color:#75715e">// iota == 7, H == 294, I == 52
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">J</span>, <span style="color:#a6e22e">K</span>								<span style="color:#75715e">// iota == 8, J == 336, K == 67
+</span><span style="color:#75715e"></span>)
+</code></pre></div>
+</div>
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="https://lachimere.github.io/tags/iota/">iota</a></li>
+      <li><a href="https://lachimere.github.io/tags/const/">const</a></li>
+    </ul>
+<nav class="paginav">
+  <a class="prev" href="https://lachimere.github.io/posts/algorithms/kmp/">
+    <span class="title">« Prev Page</span>
+    <br>
+    <span>KMP 算法模板</span>
+  </a>
+  <a class="next" href="https://lachimere.github.io/posts/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/">
+    <span class="title">Next Page »</span>
+    <br>
+    <span>深入讨论 Slice</span>
+  </a>
+</nav>
+
+  </footer>
+</article>
+    </main>
+    <footer class="footer">
+    <span>&copy; 2021 <a href="https://lachimere.github.io/">LaChimere</a></span>
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)">
+    <button class="top-link" id="top-link" type="button" accesskey="g">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+            <path d="M12 6H0l6-6z" />
+        </svg>
+    </button>
+</a>
+
+<script>
+    let menu = document.getElementById('menu')
+    menu.scrollLeft = localStorage.getItem("menu-scroll-position");
+    menu.onscroll = function () {
+        localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+</body>
+
+</html>

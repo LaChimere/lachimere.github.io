@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>深入讨论 Slice | LaChimere</title>
+<meta name="keywords" content="slice" />
+<meta name="description" content="对 slice 的初始化方式之间的异同点和调用 append() 的具体细节的一些讨论。">
+<meta name="author" content="LaChimere">
+<link rel="canonical" href="https://lachimere.github.io/posts/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/" />
+<link crossorigin="anonymous" href="/assets/css/stylesheet.min.2d6dbfc6e0f8a1db1c9d082a76dc11d094328cf63f247bbc2421dfaa7f2bb170.css" integrity="sha256-LW2/xuD4odscnQgqdtwR0JQyjPY/JHu8JCHfqn8rsXA=" rel="preload stylesheet" as="style">
+<script defer crossorigin="anonymous" src="/assets/js/highlight.min.7680afc38aa6b15ddf158a4f3780b7b1f7dde7e91d26f073e6229bb7a0793c92.js" integrity="sha256-doCvw4qmsV3fFYpPN4C3sffd5&#43;kdJvBz5iKbt6B5PJI="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<link rel="icon" href="https://lachimere.github.io/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://lachimere.github.io/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://lachimere.github.io/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://lachimere.github.io/apple-touch-icon.png">
+<link rel="mask-icon" href="https://lachimere.github.io/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.88.1" />
+<meta property="og:title" content="深入讨论 Slice" />
+<meta property="og:description" content="对 slice 的初始化方式之间的异同点和调用 append() 的具体细节的一些讨论。" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://lachimere.github.io/posts/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/" /><meta property="article:section" content="posts" />
+<meta property="article:published_time" content="2021-03-23T00:00:00&#43;00:00" />
+<meta property="article:modified_time" content="2021-03-23T00:00:00&#43;00:00" />
+
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="深入讨论 Slice"/>
+<meta name="twitter:description" content="对 slice 的初始化方式之间的异同点和调用 append() 的具体细节的一些讨论。"/>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Posts",
+      "item": "https://lachimere.github.io/posts/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "深入讨论 Slice",
+      "item": "https://lachimere.github.io/posts/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "深入讨论 Slice",
+  "name": "深入讨论 Slice",
+  "description": "对 slice 的初始化方式之间的异同点和调用 append() 的具体细节的一些讨论。",
+  "keywords": [
+    "slice"
+  ],
+  "articleBody": "1. Slice 定义 在 Go 的源码包中，src/runtime/slice.go 定义了 slice 的数据结构：\ntype slice struct { array unsafe.Pointer len int cap int } 其中，array 指向底层数组，len 为 slice 长度，cap 为底层数组容量。\n2. Slice 多种初始化方式的异同   使用变量声明\nvar s []int 当采用这种方式声明一个 slice 的时候，需要注意：\n s 是结构体 slice 的一个实例，其 fields 中 len 和 cap 均为 0，而 array 为 nil； 若输出 s，即 fmt.Println(s)，输出结果为 []； s == nil 为 true，但 \u0026s 会显示一个有效的地址值，表明 s 已存在于内存中。    使用字面量初始化\n初始化一个空 slice：\ns := []int{} 此时，s 的 len 和 cap 也均为 0，但 array 不为 nil。虽然 fmt.Println(s) 仍会输出 []，但 s == nil 为 false。\n  使用内置函数 make() 可指定长度和空间\ns1 := make([]int, 5)\t// 指定长度 s2 := make([]int, 5, 10)\t// 指定长度和空间   从 array 或 slice 中切取\narr := [5]int{1, 2, 3, 4, 5} s1 := arr[0:2]\t// len(s1) == 2, cap(s1) == 5 s2 := s1[0:1]\t// len(s2) == 1, cap(s2) == 5 在本例中，s1 由 array arr 切取得到，s2 由 s1 切取得到，可验证 \u0026arr == \u0026s1[0] 和 \u0026arr == \u0026s2[0]。\n  3. 调用 append() 时需保持清醒 append() 扩容容量选择基于以下基本规则：\n 若 old.cap ，则 slice 容量扩大为原来的 2 倍； 若 old.cap = 1024，则 slice 容量扩大为原来的 1.25 倍。  在使用 append() 向 slice 中加入元素时，若 slice 空间不足，即当新加入的元素会使得 len  cap 时，slice 会通过 growslice() 函数增长。值得注意的是，growslice() 函数是有返回值的，其返回值类型为 slice，故可将 slice 的增长过程认为是在内存中的另一区域开辟一块新的空间存放数据，并将这块空间的地址作为新的 array 指针，同时更新 cap，构造出 slice{p, old.len, newcap} 以返回。因此，每一次扩容理论上都会引起 slice 底层数组所在位置的变化。\n一个很值得研究的例子如下：\nfunc SliceRise(s []int) { s = append(s, 0) for i := range s { s[i]++ } } func SlicePrint() { s1 := []int{1, 2} s2 := s1 s2 = append(s2, 3) SliceRise(s1) SliceRise(s2) fmt.Println(s1, s2)\t// [1 2] [2 3 4] } 当程序调用 SlicePrint() 函数时，该函数前两行执行后，s1 和 s2 是 len 和 cap 均为 2 的 两个 slices，debug 发现，此时有 \u0026s1 != \u0026s2 且 \u0026s1[0] == \u0026s2[0]，说明 s1 和 s2 是两个不同的 slice 实例，但二者的 array 值均相等。当向 s2 中加入元素 3 时，由于 s2 需要扩容，故 s2 的 array 值被更新（重新分配了新的空间）且其 len 和 cap 值由 2 分别更新为 3 和 4。\n现讨论 s1。切记，Go 语言中函数参数传递均是 pass by value，故调用 SliceRise(s1) 时，在 SliceRise() 中相当于进行了 s := s1 的操作，这与 SlicePrint() 中 s2 := s1 所造成的结果是一致的。故在 callee SliceRise() 中进行 s = append(s, 0) 操作后，s 的底层数组空间重新分配，不再代表其 caller SlicePrint() 中 s1 的底层数组，因此对其中所有元素的操作不会修改 s1 底层数组中元素的值，s1 最后的输出结果仍为 [1 2]。\ns2 的情况更加隐蔽。由上可知，在调用 SliceRise(s2) 之前，s2 的底层数组容量已更新为 4, 而此时其中有效元素仅有 1 和 2。同样地，SliceRise() 中的 s 是 s2 的拷贝，但由于 s2 底层数组中尚有空间存放新增的元素，此时 s = append(s, 0) 不会导致 array 所指空间的重新分配，即此时 s 和 s2 共享同一底层数组 ，故在 callee SliceRise() 中修改 s 中元素便是修改 caller SlicePrint() 中 s2 的底层数组元素。因此，caller 中 s2 底层数组的四个元素值分别更新为 2 3 4 1。但是，正是由于 pass by value，callee 中的 s 即使通过 append() 向 s2 的底层数组新加入了一个元素，其所更新的 len 是属于 s 的，这不会影响 caller 中 s2 的 len，故 s2 的 len 仍为 3，因此 s2 最后输出结果为 [2 3 4]。\n综上，即使有多个 slice 实例共享同一个底层数组，每个 slice 在进行 append() 操作时，只会修改其自身的 len 和 cap，且当其需要扩容时，只会将其与共享的底层数组解引用，并为其分配新的底层数组空间。在修改共享的底层数组元素时，会影响到所有共享此底层数组的 slice。\n",
+  "wordCount" : "416",
+  "inLanguage": "en",
+  "datePublished": "2021-03-23T00:00:00Z",
+  "dateModified": "2021-03-23T00:00:00Z",
+  "author":{
+    "@type": "Person",
+    "name": "LaChimere"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://lachimere.github.io/posts/golang/%E6%B7%B1%E5%85%A5%E8%AE%A8%E8%AE%BAslice/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "LaChimere",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://lachimere.github.io/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: #1d1e20;
+                --entry: #2e2e33;
+                --primary: rgba(255, 255, 255, 0.84);
+                --secondary: rgba(255, 255, 255, 0.56);
+                --tertiary: rgba(255, 255, 255, 0.16);
+                --content: rgba(255, 255, 255, 0.74);
+                --hljs-bg: #2e2e33;
+                --code-bg: #37383e;
+                --border: #333;
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-track {
+                background: 0 0;
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-thumb {
+                border-color: var(--theme);
+            }
+        }
+
+    </style>
+</noscript>
+
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://lachimere.github.io/" accesskey="h" title="LaChimere (Alt + H)">LaChimere</a>
+            <span class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </span>
+        </div>
+        <ul id="menu">
+            <li>
+                <a href="https://lachimere.github.io/archives/" title="Archive">
+                    <span>Archive</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/categories/" title="Categories">
+                    <span>Categories</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/search/" title="Search (Alt &#43; /)" accesskey=/>
+                    <span>Search</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/tags/" title="Tags">
+                    <span>Tags</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <div class="breadcrumbs"><a href="https://lachimere.github.io/">Home</a>&nbsp;»&nbsp;<a href="https://lachimere.github.io/posts/">Posts</a></div>
+    <h1 class="post-title">
+      深入讨论 Slice
+    </h1>
+    <div class="post-description">
+      对 slice 的初始化方式之间的异同点和调用 append() 的具体细节的一些讨论。
+    </div>
+    <div class="post-meta">March 23, 2021&nbsp;·&nbsp;2 min&nbsp;·&nbsp;LaChimere
+</div>
+  </header> <div class="toc">
+    <details >
+        <summary accesskey="c" title="(Alt + C)">
+            <div class="details">Table of Contents</div>
+        </summary>
+        <div class="inner"><ul>
+                <li>
+                    <a href="#1-slice-%e5%ae%9a%e4%b9%89" aria-label="1. Slice 定义">1. Slice 定义</a></li>
+                <li>
+                    <a href="#2-slice-%e5%a4%9a%e7%a7%8d%e5%88%9d%e5%a7%8b%e5%8c%96%e6%96%b9%e5%bc%8f%e7%9a%84%e5%bc%82%e5%90%8c" aria-label="2. Slice 多种初始化方式的异同">2. Slice 多种初始化方式的异同</a></li>
+                <li>
+                    <a href="#3-%e8%b0%83%e7%94%a8-append-%e6%97%b6%e9%9c%80%e4%bf%9d%e6%8c%81%e6%b8%85%e9%86%92" aria-label="3. 调用 append() 时需保持清醒">3. 调用 <code>append()</code> 时需保持清醒</a>
+                </li>
+            </ul>
+        </div>
+    </details>
+</div>
+
+  <div class="post-content"><h2 id="1-slice-定义">1. Slice 定义<a hidden class="anchor" aria-hidden="true" href="#1-slice-定义">#</a></h2>
+<p>在 Go 的源码包中，<code>src/runtime/slice.go</code> 定义了 slice 的数据结构：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">slice</span> <span style="color:#66d9ef">struct</span> {
+	<span style="color:#a6e22e">array</span> <span style="color:#a6e22e">unsafe</span>.<span style="color:#a6e22e">Pointer</span>
+	<span style="color:#a6e22e">len</span>   <span style="color:#66d9ef">int</span>
+	<span style="color:#a6e22e">cap</span>   <span style="color:#66d9ef">int</span>
+}
+</code></pre></div><p>其中，<code>array</code> 指向底层数组，<code>len</code> 为 slice 长度，<code>cap</code> 为底层数组容量。</p>
+<h2 id="2-slice-多种初始化方式的异同">2. Slice 多种初始化方式的异同<a hidden class="anchor" aria-hidden="true" href="#2-slice-多种初始化方式的异同">#</a></h2>
+<ol>
+<li>
+<p>使用变量声明</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">var</span> <span style="color:#a6e22e">s</span> []<span style="color:#66d9ef">int</span>
+</code></pre></div><p>当采用这种方式声明一个 slice 的时候，需要注意：</p>
+<ul>
+<li><code>s</code> 是结构体 <code>slice</code> 的一个实例，其 fields 中 <code>len</code> 和 <code>cap</code> 均为 <code>0</code>，而 <code>array</code> 为 <code>nil</code>；</li>
+<li>若输出 <code>s</code>，即 <code>fmt.Println(s)</code>，输出结果为 <code>[]</code>；</li>
+<li><code>s == nil</code> 为 <code>true</code>，但 <code>&amp;s</code> 会显示一个有效的地址值，表明 <code>s</code> 已存在于内存中。</li>
+</ul>
+</li>
+<li>
+<p>使用字面量初始化</p>
+<p>初始化一个空 slice：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">s</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{}
+</code></pre></div><p>此时，<code>s</code> 的 <code>len</code> 和 <code>cap</code> 也均为 <code>0</code>，但 <code>array</code> 不为 <code>nil</code>。虽然 <code>fmt.Println(s)</code> 仍会输出 <code>[]</code>，但 <code>s == nil</code> 为 <code>false</code>。</p>
+</li>
+<li>
+<p>使用内置函数 <code>make()</code> 可指定长度和空间</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">s1</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, <span style="color:#ae81ff">5</span>)		<span style="color:#75715e">// 指定长度
+</span><span style="color:#75715e"></span><span style="color:#a6e22e">s2</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, <span style="color:#ae81ff">5</span>, <span style="color:#ae81ff">10</span>)	<span style="color:#75715e">// 指定长度和空间
+</span></code></pre></div></li>
+<li>
+<p>从 array 或 slice 中切取</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">arr</span> <span style="color:#f92672">:=</span> [<span style="color:#ae81ff">5</span>]<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">2</span>, <span style="color:#ae81ff">3</span>, <span style="color:#ae81ff">4</span>, <span style="color:#ae81ff">5</span>}
+<span style="color:#a6e22e">s1</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">arr</span>[<span style="color:#ae81ff">0</span>:<span style="color:#ae81ff">2</span>]		<span style="color:#75715e">// len(s1) == 2, cap(s1) == 5
+</span><span style="color:#75715e"></span><span style="color:#a6e22e">s2</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">s1</span>[<span style="color:#ae81ff">0</span>:<span style="color:#ae81ff">1</span>]		<span style="color:#75715e">// len(s2) == 1, cap(s2) == 5
+</span></code></pre></div><p>在本例中，<code>s1</code> 由 array <code>arr</code> 切取得到，<code>s2</code> 由 <code>s1</code> 切取得到，可验证 <code>&amp;arr == &amp;s1[0]</code> 和 <code>&amp;arr == &amp;s2[0]</code>。</p>
+</li>
+</ol>
+<h2 id="3-调用-append-时需保持清醒">3. 调用 <code>append()</code> 时需保持清醒<a hidden class="anchor" aria-hidden="true" href="#3-调用-append-时需保持清醒">#</a></h2>
+<p><code>append()</code> 扩容容量选择基于以下基本规则：</p>
+<ul>
+<li>若 <code>old.cap &lt; 1024</code>，则 slice 容量扩大为原来的 2 倍；</li>
+<li>若 <code>old.cap &gt;= 1024</code>，则 slice 容量扩大为原来的 1.25 倍。</li>
+</ul>
+<p>在使用 <code>append()</code> 向 slice 中加入元素时，若 slice 空间不足，即当新加入的元素会使得 <code>len &gt; cap</code> 时，slice 会通过 <code>growslice()</code> 函数增长。值得注意的是，<code>growslice()</code> 函数是有返回值的，其返回值类型为 <code>slice</code>，故可将 slice 的增长过程认为是在内存中的另一区域开辟一块新的空间存放数据，并将这块空间的地址作为新的 <code>array</code> 指针，同时更新 <code>cap</code>，构造出 <code>slice{p, old.len, newcap}</code> 以返回。因此，每一次扩容理论上都会引起 slice 底层数组所在位置的变化。</p>
+<p>一个很值得研究的例子如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">SliceRise</span>(<span style="color:#a6e22e">s</span> []<span style="color:#66d9ef">int</span>) {
+    <span style="color:#a6e22e">s</span> = append(<span style="color:#a6e22e">s</span>, <span style="color:#ae81ff">0</span>)
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#66d9ef">range</span> <span style="color:#a6e22e">s</span> {
+        <span style="color:#a6e22e">s</span>[<span style="color:#a6e22e">i</span>]<span style="color:#f92672">++</span>
+    }
+}
+
+<span style="color:#66d9ef">func</span> <span style="color:#a6e22e">SlicePrint</span>() {
+    <span style="color:#a6e22e">s1</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">2</span>}
+    <span style="color:#a6e22e">s2</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">s1</span>
+    <span style="color:#a6e22e">s2</span> = append(<span style="color:#a6e22e">s2</span>, <span style="color:#ae81ff">3</span>)
+    <span style="color:#a6e22e">SliceRise</span>(<span style="color:#a6e22e">s1</span>)
+    <span style="color:#a6e22e">SliceRise</span>(<span style="color:#a6e22e">s2</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">s1</span>, <span style="color:#a6e22e">s2</span>)		<span style="color:#75715e">// [1 2] [2 3 4]
+</span><span style="color:#75715e"></span>}
+</code></pre></div><p>当程序调用 <code>SlicePrint()</code> 函数时，该函数前两行执行后，<code>s1</code> 和 <code>s2</code> 是 <code>len</code> 和 <code>cap</code> 均为 <code>2</code> 的 两个 slices，debug 发现，此时有 <code>&amp;s1 != &amp;s2</code> 且 <code>&amp;s1[0] == &amp;s2[0]</code>，说明 <strong><code>s1</code> 和 <code>s2</code> 是两个不同的 slice 实例，但二者的 <code>array</code> 值均相等</strong>。当向 <code>s2</code> 中加入元素 <code>3</code> 时，由于 <code>s2</code> 需要扩容，故 <code>s2</code> 的 <code>array</code> 值被更新（重新分配了新的空间）且其 <code>len</code> 和 <code>cap</code> 值由 <code>2</code> 分别更新为 <code>3</code> 和 <code>4</code>。</p>
+<p>现讨论 <code>s1</code>。切记，Go 语言中函数参数传递均是 <em>pass by value</em>，故调用 <code>SliceRise(s1)</code> 时，在 <code>SliceRise()</code> 中相当于进行了 <code>s := s1</code> 的操作，这与 <code>SlicePrint()</code> 中 <code>s2 := s1</code> 所造成的结果是一致的。故<strong>在 callee <code>SliceRise()</code> 中进行 <code>s = append(s, 0)</code> 操作后，<code>s</code> 的底层数组空间重新分配，不再代表其 caller <code>SlicePrint()</code> 中 <code>s1</code> 的底层数组</strong>，因此对其中所有元素的操作不会修改 <code>s1</code> 底层数组中元素的值，<code>s1</code> 最后的输出结果仍为 <code>[1 2]</code>。</p>
+<p><code>s2</code> 的情况更加隐蔽。由上可知，在调用 <code>SliceRise(s2)</code> 之前，<code>s2</code> 的底层数组容量已更新为 <code>4</code>, 而此时其中有效元素仅有 <code>1</code> 和 <code>2</code>。同样地，<code>SliceRise()</code> 中的 <code>s</code> 是 <code>s2</code> 的拷贝，但由于 <code>s2</code> 底层数组中尚有空间存放新增的元素，此时 <code>s = append(s, 0)</code> 不会导致 <code>array</code> 所指空间的重新分配，即此时 <code>s</code> 和 <code>s2</code> 共享同一底层数组 ，故在 callee <code>SliceRise()</code> 中修改 <code>s</code> 中元素便是修改 caller <code>SlicePrint()</code> 中 <code>s2</code> 的底层数组元素。因此，caller 中 <code>s2</code> 底层数组的四个元素值分别更新为 <code>2 3 4 1</code>。但是，正是由于 <em>pass by value</em>，<strong>callee 中的 <code>s</code> 即使通过 <code>append()</code> 向 <code>s2</code> 的底层数组新加入了一个元素，其所更新的 <code>len</code> 是属于 <code>s</code> 的，这不会影响 caller 中 <code>s2</code> 的 <code>len</code>，故 <code>s2</code> 的 <code>len</code> 仍为 <code>3</code></strong>，因此 <code>s2</code> 最后输出结果为 <code>[2 3 4]</code>。</p>
+<p>综上，即使有多个 <code>slice</code> 实例共享同一个底层数组，每个 slice 在进行 <code>append()</code> 操作时，只会修改其自身的 <code>len</code> 和 <code>cap</code>，且当其需要扩容时，只会将其与共享的底层数组解引用，并为其分配新的底层数组空间。在修改共享的底层数组元素时，会影响到所有共享此底层数组的 slice。</p>
+
+</div>
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="https://lachimere.github.io/tags/slice/">slice</a></li>
+    </ul>
+<nav class="paginav">
+  <a class="prev" href="https://lachimere.github.io/posts/golang/%E7%90%86%E8%A7%A3iota%E7%9A%84%E5%8F%96%E5%80%BC%E8%A7%84%E5%88%99/">
+    <span class="title">« Prev Page</span>
+    <br>
+    <span>理解 iota 的取值规则</span>
+  </a>
+</nav>
+
+  </footer>
+</article>
+    </main>
+    <footer class="footer">
+    <span>&copy; 2021 <a href="https://lachimere.github.io/">LaChimere</a></span>
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)">
+    <button class="top-link" id="top-link" type="button" accesskey="g">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+            <path d="M12 6H0l6-6z" />
+        </svg>
+    </button>
+</a>
+
+<script>
+    let menu = document.getElementById('menu')
+    menu.scrollLeft = localStorage.getItem("menu-scroll-position");
+    menu.onscroll = function () {
+        localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+</body>
+
+</html>

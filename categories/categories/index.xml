@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>categories on LaChimere</title>
+    <link>https://lachimere.github.io/categories/categories/</link>
+    <description>Recent content in categories on LaChimere</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <lastBuildDate>Mon, 20 Sep 2021 23:54:11 +0800</lastBuildDate><atom:link href="https://lachimere.github.io/categories/categories/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Happy Birthday Yifan</title>
+      <link>https://lachimere.github.io/posts/happy-birthday-yifan/</link>
+      <pubDate>Mon, 20 Sep 2021 23:54:11 +0800</pubDate>
+      
+      <guid>https://lachimere.github.io/posts/happy-birthday-yifan/</guid>
+      <description>一帆，生日快乐</description>
+    </item>
+    
+  </channel>
+</rss>

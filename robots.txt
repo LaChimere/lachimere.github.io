@@ -1,0 +1,3 @@
+User-agent: *
+Disallow:
+Sitemap: https://lachimere.github.io/sitemap.xml
