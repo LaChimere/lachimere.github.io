@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>Arrays, slices (and strings): The mechanics of &#39;append&#39; | LaChimere</title>
+<meta name="keywords" content="array, slice, append" />
+<meta name="description" content="【The Go Blog】数组、切片（和字符串）——append 的方法">
+<meta name="author" content="Rob Pike">
+<link rel="canonical" href="https://lachimere.github.io/posts/golang/arrays-slices-and-strings-the-mechanics-of-append/" />
+<link crossorigin="anonymous" href="/assets/css/stylesheet.min.2d6dbfc6e0f8a1db1c9d082a76dc11d094328cf63f247bbc2421dfaa7f2bb170.css" integrity="sha256-LW2/xuD4odscnQgqdtwR0JQyjPY/JHu8JCHfqn8rsXA=" rel="preload stylesheet" as="style">
+<script defer crossorigin="anonymous" src="/assets/js/highlight.min.7680afc38aa6b15ddf158a4f3780b7b1f7dde7e91d26f073e6229bb7a0793c92.js" integrity="sha256-doCvw4qmsV3fFYpPN4C3sffd5&#43;kdJvBz5iKbt6B5PJI="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<link rel="icon" href="https://lachimere.github.io/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://lachimere.github.io/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://lachimere.github.io/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://lachimere.github.io/apple-touch-icon.png">
+<link rel="mask-icon" href="https://lachimere.github.io/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.88.1" />
+<meta property="og:title" content="Arrays, slices (and strings): The mechanics of &#39;append&#39;" />
+<meta property="og:description" content="【The Go Blog】数组、切片（和字符串）——append 的方法" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://lachimere.github.io/posts/golang/arrays-slices-and-strings-the-mechanics-of-append/" /><meta property="article:section" content="posts" />
+<meta property="article:published_time" content="2021-07-13T00:00:00&#43;00:00" />
+<meta property="article:modified_time" content="2021-07-13T00:00:00&#43;00:00" />
+
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Arrays, slices (and strings): The mechanics of &#39;append&#39;"/>
+<meta name="twitter:description" content="【The Go Blog】数组、切片（和字符串）——append 的方法"/>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Posts",
+      "item": "https://lachimere.github.io/posts/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "Arrays, slices (and strings): The mechanics of 'append'",
+      "item": "https://lachimere.github.io/posts/golang/arrays-slices-and-strings-the-mechanics-of-append/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Arrays, slices (and strings): The mechanics of 'append'",
+  "name": "Arrays, slices (and strings): The mechanics of \u0027append\u0027",
+  "description": "【The Go Blog】数组、切片（和字符串）——append 的方法",
+  "keywords": [
+    "array", "slice", "append"
+  ],
+  "articleBody": "Arrays, slices (and strings): The mechanics of ‘append’ Rob Pike, 26 Semptember 2013\n数组、切片（和字符串）——append 的方法\nLaChimere 译\nIntroduction 简介\nOne of the most common features of procedural programming languages is the concept of an array. Arrays seem like simple things but there are many questions that must be answered when adding them to a language, such as:\n fixed-size or variable-size? is the size part of the type? what do multidimensional arrays look like? does the empty array have meaning?  过程式编程语言最为普遍的特点之一是数组的概念。虽然数组看似简单，但在将其引入到程序语言时，有如下许多问题必须解决：\n 数组大小是否固定？ 数组大小是否为数组类型的一部分？ 多维数组是什么样子？ 空数组是否具有意义？  The answers to these questions affect whether arrays are just a feature of the language or a core part of its design.\n对于一个程序语言，上述问题的答案将会影响数组仅作为其特性之一还是作为其核心组成部分。\nIn the early development of Go, it took about a year to decide the answers to these questions before the design felt right. The key step was the introduction of slices, which built on fixed-size arrays to give a flexible, extensible data structure. To this day, however, programmers new to Go often stumble over the way slices work, perhaps because experience from other languages has colored their thinking.\n在 Go 语言早期开发时期，我们在将数组设计得基本正确之前，经历了大约一年的时间来回答这些问题。其中，最为重要的一步便是对于 slice（切片）的引入。Slice 建立在固定大小的 array （数组）之上，是一种灵活且具有扩展性的数据结构。然而，时至今日，或许是受到了其他程序语言的影响，初学 Go 语言的程序员在理解 slice 工作方式上常常遇到困难。\nIn this post we’ll attempt to clear up the confusion. We’ll do so by building up the pieces to explain how the append built-in function works, and why it works the way it does.\n为了消除这样的疑惑，在本文中，我们将通过例子来阐明 append 如何运行和它为何按照此方式运行的问题。\nArrays 数组\nArrays are an important building block in Go, but like the foundation of a building they are often hidden below more visible components. We must talk about them briefly before we move on to the more interesting, powerful, and prominent idea of slices.\nArray 是 Go 语言的重要组成部分之一，但如地基一般，数组常常隐藏在其他可见的组成背后。在介绍更为有趣、强大和著名的 slice 之前，我们必须先简要介绍一下 array。\nArrays are not often seen in Go programs because the size of an array is part of its type, which limits its expressive power.\n由于固定的大小限制了其表现力，array 并不常为 Go 程序员使用。\nThe declaration\n如下声明了一个 256 字节大小的 buffer 数组。\nvar buffer [256]byte declares the variable buffer, which holds 256 bytes. The type of buffer includes its size, [256]byte. An array with 512 bytes would be of the distinct type [512]byte.\nbuffer 的类型，即 [256]byte，包含了其大小。那么一个 512 字节大小的数组的类型可为 [512]byte。\nThe data associated with an array is just that: an array of elements. Schematically, our buffer looks like this in memory,\n与一个数组相联系的数据就是“数组的元素”。简要地讲，我们的 buffer 在内存中就像下面这样：\nbuffer: byte byte byte ... 256 times ... byte byte byte That is, the variable holds 256 bytes of data and nothing else. We can access its elements with the familiar indexing syntax, buffer[0], buffer[1], and so on through buffer[255]. (The index range 0 through 255 covers 256 elements.) Attempting to index buffer with a value outside this range will crash the program.\n这表明，变量 buffer 只保存着 256 字节的数据。我们可以用熟悉的索引方式来访问其中的元素，如 buffer[0]、buffer[1] 直到 buffer[255]。（数组下标从 0 到 255 表示共 256 个元素）越界访问 buffer 数组会导致程序崩溃。\nThere is a built-in function called len that returns the number of elements of an array or slice and also of a few other data types. For arrays, it’s obvious what len returns. In our example, len(buffer) returns the fixed value 256.\n内置函数 len 会返回 array 或 slice 等数据类型的元素个数。对于 array 来说 len 所返回的结果显而易见，在上述例子中，len(buffer) 将返回一个固定的值 256。\nArrays have their place—they are a good representation of a transformation matrix for instance—but their most common purpose in Go is to hold storage for a slice.\nArray 具有自己的空间，可以很好地表示出变换矩阵等。然而，array 在 Go 语言中最为普遍的用途是为 slice 提供存储空间（译注：即作为 slice 的底层数组）。\nSlices: The slice header 切片：slice header\nSlices are where the action is, but to use them well one must understand exactly what they are and what they do.\nSlice 是我们常用来操作的类型，但只有准确地理解 slice 及其功能我们才能用好它。\nA slice is a data structure describing a contiguous section of an array stored separately from the slice variable itself. A slice is not an array. A slice describes a piece of an array.\nSlice 是用来描述数组上的一段连续片段的数据结构，该片段与 slice 是分开存储的。Slice 并非 array，它描述了 array 的一个片段。\nGiven our buffer array variable from the previous section, we could create a slice that describes elements 100 through 150 (to be precise, 100 through 149, inclusive) by slicing the array:\n我们可以给此前提到的 buffer 数组进行切片以创建一个 slice 来描述其第 100 ~ 150 个元素（准确地说，是第 100 个到 第 149 个元素，闭区间）：\nvar slice []byte = buffer[100:150] In that snippet we used the full variable declaration to be explicit. The variable slice has type []byte, pronounced “slice of bytes”, and is initialized from the array, called buffer, by slicing elements 100 (inclusive) through 150 (exclusive). The more idiomatic syntax would drop the type, which is set by the initializing expression:\n上述代码中，我们显式地对声明了变量。变量 slice 的类型为 []byte，即 byte 的切片。同时，slice 也通过对 buffer 数组的第 $[100, 150)$ 个元素切片而进行了初始化，更为习惯的用法是省略掉 slice 的类型而用初始化表达式来推断，如下：\nvar slice = buffer[100:150] Inside a function we could use the short declaration form,\n在函数中我们可使用如下短声明式：\nslice := buffer[100:150] What exactly is this slice variable? It’s not quite the full story, but for now think of a slice as a little data structure with two elements: a length and a pointer to an element of an array. You can think of it as being built like this behind the scenes:\nSlice 变量究竟是什么？现在我们还没有完全回答这个问题，不过你可以将 slice 设想为一个具有两种元素的数据结构：长度 length 和指向存放数据元素数组的指针 pointer，就像下面这样：\ntype sliceHeader struct { Length int ZerothElement *byte } slice := sliceHeader{ Length: 50, ZerothElement: \u0026buffer[100], } Of course, this is just an illustration. Despite what this snippet says that sliceHeader struct is not visible to the programmer, and the type of the element pointer depends on the type of the elements, but this gives the general idea of the mechanics.\n当然，这只是一种说明。尽管在这个代码块中，sliceHeader 对程序员而言不可见，且其中的数据元素指针类型取决于数据元素类型，但这是对 slice 实现方法的一个大体的说明。\nSo far we’ve used a slice operation on an array, but we can also slice a slice, like this:\n除了可以对 array 进行操作，我们像下面这样还可以对 slice 进行切片：\nslice2 := slice[5:10] Just as before, this operation creates a new slice, in this case with elements 5 through 9 (inclusive) of the original slice, which means elements 105 through 109 of the original array. The underlying sliceHeader struct for the slice2 variable looks like this:\n如此前一样，这样的操作将会创建一个新的 slice。在上面这个例子中，新的 slice 表示原始 slice 中的第 $[5,9]$ 个元素，即原 array 中的第 $[105,109]$ 个元素。对于 slice2 而言，底层的 sliceHeader 像这样：\nslice2 := sliceHeader{ Length: 5, ZerothElement: \u0026buffer[105], } Notice that this header still points to the same underlying array, stored in the buffer variable.\n请注意，这个 sliceHeader 依然指向同一底层数组，即 buffer。\nWe can also reslice, which is to say slice a slice and store the result back in the original slice structure. After\n我们还可以对一个 slice 再分片，并且可以将分片的结果存放于原 slice 中。\nslice = slice[5:10] the sliceHeader structure for the slice variable looks just like it did for the slice2 variable. You’ll see reslicing used often, for example to truncate a slice. This statement drops the first and last elements of our slice:\n在对 slice 进行上面的操作后，slice 的 sliceHeader 结构与此前对 slice2 进行再切片操作后的 sliceHeader 类似。你会发现，再分片的操作时常用到，例如截取 slice，如下语句便截掉了 slice 的首尾元素：\nslice = slice[1:len(slice)-1] [Exercise: Write out what the sliceHeader struct looks like after this assignment.]\n【练习：写出上面赋值语句操作过后的 sliceHeader 结构。】\nYou’ll often hear experienced Go programmers talk about the “slice header” because that really is what’s stored in a slice variable. For instance, when you call a function that takes a slice as an argument, such as bytes.IndexRune, that header is what gets passed to the function. In this call,\n你会常常听到经验丰富的 Go 程序员讨论“slice header”，这是因为“slice header”是 slice 变量真正存储的内容。举个例子，当你想要将 slice 作为参数去调用一个函数时，如 bytes.IndexRune，“slice header”是真正传给函数的参数。在如下函数调用中，\nslashPos := bytes.IndexRune(slice, '/') the slice argument that is passed to the IndexRune function is, in fact, a “slice header”.\n传递给函数 IndexRune 的 slice 参数实际上是一个“slice header”。\nThere’s one more data item in the slice header, which we talk about below, but first let’s see what the existence of the slice header means when you program with slices.\n我们将会在下面讨论 slice header 中另一个数据元素，不过在此之前，我们不妨先看看在涉及 slice 的编程中 slice header 的存在意味着什么。\nPassing slices to functions 传函数以 slice\nIt’s important to understand that even though a slice contains a pointer, it is itself a value. Under the covers, it is a struct value holding a pointer and a length. It is not a pointer to a struct.\n尽管 slice 包含一个 指针 pointer，但 slice 自身是一个值，理解这一点非常重要。在 Go 语言内部，slice 实际上是一个保存着指针 pointer 和 长度 length 的结构体，而非单纯的指向另一种结构的指针。\nThis matters.\n这一点非常重要。\nWhen we called IndexRune in the previous example, it was passed a copy of the slice header. That behavior has important ramifications.\n在此前的例子中，当我们调用 IndexRune 函数时，我们传给该函数一个 slicer header 的拷贝，这样的行为会产生意义重大而又难以预测的结果。\nConsider this simple function:\n如下函数：\nfunc AddOneToEachElement(slice []byte) { for i := range slice { slice[i]++ } } It does just what its name implies, iterating over the indices of a slice (using a for range loop), incrementing its elements.\n该函数功能如其名，递增 slice 中每一个元素。\nTry it:\n尝试运行下面这段代码：\nfunc main() { slice := buffer[10:20] for i := 0; i slice); i++ { slice[i] = byte(i) } fmt.Println(\"before\", slice) AddOneToEachElement(slice) fmt.Println(\"after\", slice) } (You can edit and re-execute these runnable snippets if you want to explore.)\n（想要探究的话，你可以编辑并且再次执行这段代码。）\nEven though the slice header is passed by value, the header includes a pointer to elements of an array, so both the original slice header and the copy of the header passed to the function describe the same array. Therefore, when the function returns, the modified elements can be seen through the original slice variable.\n虽然 slice header 以传值（pass by value）的方式传递给函数，但 slice header 中所含的的指针指向元素数组，因此原 slice header 及其传递给函数的拷贝描述着同一个数组，故当函数返回时，我们可以通过原 slice 变量观察到元素已发生了修改。\nThe argument to the function really is a copy, as this example shows:\n下面代码印证了传递给函数的 slice 参数实际上是原 slice 的一个拷贝：\nfunc SubtractOneFromLength(slice []byte) []byte { slice = slice[0 : len(slice)-1] return slice } func main() { fmt.Println(\"Before: len(slice) =\", len(slice)) newSlice := SubtractOneFromLength(slice) fmt.Println(\"After: len(slice) =\", len(slice)) fmt.Println(\"After: len(newSlice) =\", len(newSlice)) } Here we see that the contents of a slice argument can be modified by a function, but its header cannot. The length stored in the slice variable is not modified by the call to the function, since the function is passed a copy of the slice header, not the original. Thus if we want to write a function that modifies the header, we must return it as a result parameter, just as we have done here. The slice variable is unchanged but the returned value has the new length, which is then stored in newSlice,\n在此我们可以看到，slice 参数的内容可以为函数所修改，但其 header 却不能被修改。存放在 slice 变量中的长度 length 在函数调用后并未发生修改，这是因为我们是将 slice header 的拷贝而非原 slice header 传递给了函数。因此，如果我们想要在函数中修改 slice header，我们必须将 slice header 作为结果返回，如 SubstractOneFromLength 所做的那样。slice 变量没有发生改变，但函数所返回的值 newSlice 中保存了新的长度 length。\nPointers to slices: Method receivers 指向 slice 的指针：方法的 receiver\nAnother way to have a function modify the slice header is to pass a pointer to it. Here’s a variant of our previous example that does this:\n另一种通过函数修改 slice header 的方式是传指针。下面我们将此前的例子进行了一些变化：\nfunc PtrSubtractOneFromLength(slicePtr *[]byte) { slice := *slicePtr *slicePtr = slice[0 : len(slice)-1] } func main() { fmt.Println(\"Before: len(slice) =\", len(slice)) PtrSubtractOneFromLength(\u0026slice) fmt.Println(\"After: len(slice) =\", len(slice)) } It seems clumsy in that example, especially dealing with the extra level of indirection (a temporary variable helps), but there is one common case where you see pointers to slices. It is idiomatic to use a pointer receiver for a method that modifies a slice.\n此例虽看上去挺笨拙的，尤其是通过一个临时变量来辅助我们间接访问 slice，但它的确是使用指向 slice 的指针时一种较为普遍的情形。我们习惯上用一个指针类型的 receiver 来调用方法以修改 slice。\nLet’s say we wanted to have a method on a slice that truncates it at the final slash. We could write it like this:\n比如，我们可以像如下代码这样通过调用一个方法实现截取 slice 最后一个 / 之前的 slice：\ntype path []byte func (p *path) TruncateAtFinalSlash() { i := bytes.LastIndex(*p, []byte(\"/\")) if i = 0 { *p = (*p)[0:i] } } func main() { pathName := path(\"/usr/bin/tso\") // Conversion from string to path.  pathName.TruncateAtFinalSlash() fmt.Printf(\"%s\\n\", pathName) } If you run this example you’ll see that it works properly, updating the slice in the caller.\n跑一跑这段代码你会发现它能够通过调用函数正确地更新 slice。\n[Exercise: Change the type of the receiver to be a value rather than a pointer and run it again. Explain what happens.]\n【练习：将 receiver 的类型从指针改为值，再跑一跑试试，并解释所发生的现象。】\nOn the other hand, if we wanted to write a method for path that upper-cases the ASCII letters in the path (parochially ignoring non-English names), the method could be a value because the value receiver will still point to the same underlying array.\n不过，当我们想要用设计一个 path 的方法来将其中的 ASCII 字母转换为大写时（其余的非英文字母均忽略），该方法的 receiver 可以为值，这是因为以值表示的 receiver 所指向底层数组和原 slice 所指向的底层数组是同一个。\ntype path []byte func (p path) ToUpper() { for i, b := range p { if 'a'  b \u0026\u0026 b  'z' { p[i] = b + 'A' - 'a' } } } func main() { pathName := path(\"/usr/bin/tso\") pathName.ToUpper() fmt.Printf(\"%s\\n\", pathName) } Here the ToUpper method uses two variables in the for range construct to capture the index and slice element. This form of loop avoids writing p[i] multiple times in the body.\n这里的 ToUpper 方法在 for range 语句中取得了 slice 的下标和与之对应的元素，这种形式可以避免在函数体中出现多次 p[i]。\n[Exercise: Convert the ToUpper method to use a pointer receiver and see if its behavior changes.]\n【练习：将 ToUpper 方法改用为指针类型的 receiver 来调用，看看会发生什么变化。】\n[Advanced exercise: Convert the ToUpper method to handle Unicode letters, not just ASCII.]\n【进阶练习：将 ToUpper 改为可以处理 Unicode 字符而非仅局限于 ASCII 的方法。】\nCapacity 容量\nLook at the following function that extends its argument slice of ints by one element:\n我们先来看看下面这个函数，在此函数中，我们给传入的 slice 参数扩展了空间：\nfunc Extend(slice []int, element int) []int { n := len(slice) slice = slice[0 : n+1] slice[n] = element return slice } (Why does it need to return the modified slice?) Now run it:\n（为什么这个函数需要返回修改了的 slice？）现在我们运行看看：\nfunc main() { var iBuffer [10]int slice := iBuffer[0:0] for i := 0; i 20; i++ { slice = Extend(slice, i) fmt.Println(slice) } } See how the slice grows until… it doesn’t.\n看看它会增长到······好吧它不会。\nIt’s time to talk about the third component of the slice header: its capacity. Besides the array pointer and length, the slice header also stores its capacity:\n是时候来讨论下 slice header 的第三个组成部分了——容量（capacity）。除了指向数组的指针和长度外，slice header 还保存了它的容量：\ntype sliceHeader struct { Length int Capacity int ZerothElement *byte } The Capacity field records how much space the underlying array actually has; it is the maximum value the Length can reach. Trying to grow the slice beyond its capacity will step beyond the limits of the array and will trigger a panic.\nCapacity 记录了底层数组的实际空间大小，它是 Length 能够达到的最大值。想要将 slice 增长到超过它的 capacity 将会导致数组越界，从而引发 panic。\nAfter our example slice is created by\n在我们的例子中 slice 是如是创建的：\nslice := iBuffer[0:0] its header looks like this:\n它的 header 就像这样：\nslice := sliceHeader{ Length: 0, Capacity: 10, ZerothElement: \u0026iBuffer[0], } The Capacity field is equal to the length of the underlying array, minus the index in the array of the first element of the slice (zero in this case). If you want to inquire what the capacity is for a slice, use the built-in function cap:\nCapacity 与底层数组的长度减去 slice 首元素在 array 中的下标（此例中为 0）所得的差相等。你可以调用内置函数 cap 来得到一个 slice 的 capacity：\nif cap(slice) == len(slice) { fmt.Println(\"slice is full!\") } Make make\nWhat if we want to grow the slice beyond its capacity? You can’t! By definition, the capacity is the limit to growth. But you can achieve an equivalent result by allocating a new array, copying the data over, and modifying the slice to describe the new array.\n如果我们想要将 slice 增长到超过其 capacity 的大小会怎么样呢？不行的！在定义上，capacity 限制了 slice 的增长，但你可以通过一种等价的方式来达到此目的，即分配一个新的数组，将数据复制过去，再修改 slice 以令其来描述新分配的数组。\nLet’s start with allocation. We could use the new built-in function to allocate a bigger array and then slice the result, but it is simpler to use the make built-in function instead. It allocates a new array and creates a slice header to describe it, all at once. The make function takes three arguments: the type of the slice, its initial length, and its capacity, which is the length of the array that make allocates to hold the slice data. This call creates a slice of length 10 with room for 5 more (15-10), as you can see by running it:\n先来说说分配的事。我们可以通过内置函数 new 来分配一个更大的数组并将其切片，但更为简单的做法是使用内置函数 make。make 能够一次性分配一个新的数组并创建描述此数组的 slice header。make 函数有三个参数：slice 的类型、初始长度和 capacity，其中 capacity 即为 make 为 slice 所分配的数组的长度。下面的代码创建了一个初始长度为 10 且具有 5 个 （$15-10$）可增长空间的 slice，来跑跑看：\nslice := make([]int, 10, 15) fmt.Printf(\"len: %d, cap: %d\\n\", len(slice), cap(slice)) This snippet doubles the capacity of our int slice but keeps its length the same:\n下面的代码块将我们上面的 int 型 slice 的 capacity 翻倍，但长度保持不变：\nslice := make([]int, 10, 15) fmt.Printf(\"len: %d, cap: %d\\n\", len(slice), cap(slice)) newSlice := make([]int, len(slice), 2*cap(slice)) for i := range slice { newSlice[i] = slice[i] } slice = newSlice fmt.Printf(\"len: %d, cap: %d\\n\", len(slice), cap(slice)) After running this code the slice has much more room to grow before needing another reallocation.\n运行上面的代码后，slice 在重新分配空间之前将有更多可增长的空间。\nWhen creating slices, it’s often true that the length and capacity will be same. The make built-in has a shorthand for this common case. The length argument defaults to the capacity, so you can leave it out to set them both to the same value. After\n当创建 slice 时，slice 的长度和 capacity 常常是相等的，这种情况下在 make 中不必写出 capacity，因为其 capacity 的值默认为 length 参数的值。\ngophers := make([]Gopher, 10) the gophers slice has both its length and capacity set to 10.\n上面的代码将 gophers slice 的长度和 capacity 均设为 10。\nCopy copy\nWhen we doubled the capacity of our slice in the previous section, we wrote a loop to copy the old data to the new slice. Go has a built-in function, copy, to make this easier. Its arguments are two slices, and it copies the data from the right-hand argument to the left-hand argument. Here’s our example rewritten to use copy:\n在前面我们将 slice 的 capacity 翻倍后，我们写了一个循环来将原先的数据拷贝到新 slice 中。对此，Go 语言提供了内置函数 copy 来简化我们的操作。copy 有两个参数，第一个参数为目的参数，第二个为源参数。下面是使用 copy 的例子：\nnewSlice := make([]int, len(slice), 2*cap(slice)) copy(newSlice, slice) The copy function is smart. It only copies what it can, paying attention to the lengths of both arguments. In other words, the number of elements it copies is the minimum of the lengths of the two slices. This can save a little bookkeeping. Also, copy returns an integer value, the number of elements it copied, although it’s not always worth checking.\ncopy 函数很是聪明，请注意两个参数的长度，copy 函数只拷贝它能够拷贝的部分。也就是说，会被拷贝的元素数量是两个 slices 的长度的较小值，如此可以省去一些记录。此外，copy 会返回一个表示被拷贝的元素数量的整数，尽管这个数并不经常有用。\nThe copy function also gets things right when source and destination overlap, which means it can be used to shift items around in a single slice. Here’s how to use copy to insert a value into the middle of a slice.\ncopy 能够正确处理 src 和 dest 有相交部分的情况，这意味着我们可以在一个 slice 中使用 copy 来移动其中的元素。下面展示了如何利用 copy 向 slice 中插入一个值：\n// Insert inserts the value into the slice at the specified index, // which must be in range. // The slice must have room for the new element. func Insert(slice []int, index, value int) []int { // Grow the slice by one element.  slice = slice[0 : len(slice)+1] // Use copy to move the upper part of the slice out of the way and open a hole.  copy(slice[index+1:], slice[index:]) // Store the new value.  slice[index] = value // Return the result.  return slice } There are a couple of things to notice in this function. First, of course, it must return the updated slice because its length has changed. Second, it uses a convenient shorthand. The expression\n在上面的函数中有许多值得我们注意的点。首先，由于 slice 的长度发生了变化，该函数必须返回更新后的 slice。其次，在该函数中，我们使用了一种省事的写法：\nslice[i:] means exactly the same as\n它和下面的写法等价：\nslice[i:len(slice)] Also, although we haven’t used the trick yet, we can leave out the first element of a slice expression too; it defaults to zero. Thus\n虽然我们还没有用过这种小技巧，不过我们可以把起始下标省去，这样就默认从 0 开始。\nslice[:] just means the slice itself, which is useful when slicing an array. This expression is the shortest way to say “a slice describing all the elements of the array”:\n因此上方代码便表示 slice 自身，这在我们对 array 进行切片时是很有用的。这样的表达式极为简要地表现出“一个描述所有数组元素的 slice”的含义：\narray[:] Now that’s out of the way, let’s run our Insert function.\n现在回过头来运行一下我们的 Insert 函数。\nslice := make([]int, 10, 20) // Note capacity  length: room to add element.  for i := range slice { slice[i] = i } fmt.Println(slice) slice = Insert(slice, 5, 99) fmt.Println(slice) Append: An example append：一个例子\nA few sections back, we wrote an Extend function that extends a slice by one element. It was buggy, though, because if the slice’s capacity was too small, the function would crash. (Our Insert example has the same problem.) Now we have the pieces in place to fix that, so let’s write a robust implementation of Extend for integer slices.\n在前面的小节中，我们写了 Extend 函数来实现向 slice 扩展一个元素的功能，但这个函数是有 bug 的。如果 slice 的 capacity 过小，这个函数会导致程序崩溃。（Insert 例子也有相同的问题。）现在我们把之前的 Extend 函数拿来 fix bug，以实现出一个健壮的 Extend 函数。\nfunc Extend(slice []int, element int) []int { n := len(slice) if n == cap(slice) { // Slice is full; must grow.  // Slice 满了，必须增长。  // We double its size and add 1, so if the size is zero we still grow.  // 将 slice 的 capacity 倍增并加 1，这样若 size 为 0 也能正常增长。  newSlice := make([]int, len(slice), 2*len(slice)+1) copy(newSlice, slice) slice = newSlice } slice = slice[0 : n+1] slice[n] = element return slice } In this case it’s especially important to return the slice, since when it reallocates the resulting slice describes a completely different array. Here’s a little snippet to demonstrate what happens as the slice fills up:\n在上面的代码中，由于我们为所要得到的 slice 重新分配了底层数组，该数组与此前的底层数组完全不同，故返回 slice 极为重要。下面的代码佐证了当 slice 填满时所发生的情况：\nslice := make([]int, 0, 5) for i := 0; i 10; i++ { slice = Extend(slice, i) fmt.Printf(\"len=%d cap=%d slice=%v\\n\", len(slice), cap(slice), slice) fmt.Println(\"address of 0th element:\", \u0026slice[0]) } Notice the reallocation when the initial array of size 5 is filled up. Both the capacity and the address of the zeroth element change when the new array is allocated.\n请注意，当初始化时的底层数组被填满后，我们需要重新分配底层数组，这时 slice 的 capacity 和首元素地址均发生了改变。\nWith the robust Extend function as a guide we can write an even nicer function that lets us extend the slice by multiple elements. To do this, we use Go’s ability to turn a list of function arguments into a slice when the function is called. That is, we use Go’s variadic function facility.\n借助上述健壮的 Extend 函数的引导，我们可以写出更棒的函数以实现扩展多个元素的功能。为了做到这一点，我们利用了 Go 语言的一个能力——在函数被调用时将一串参数转换为 slice，即可变参数函数机制。\nLet’s call the function Append. For the first version, we can just call Extend repeatedly so the mechanism of the variadic function is clear. The signature of Append is this:\n我们把可以实现向 slice 中扩展多个元素的函数叫做 Append。在其第一个实现版本中，我们先重复地调用 Extend，这样一来可变参数函数的机理显得较为清晰。Append 的函数签名如下：\nfunc Append(slice []int, items ...int) []int What that says is that Append takes one argument, a slice, followed by zero or more int arguments. Those arguments are exactly a slice of int as far as the implementation of Append is concerned, as you can see:\n这表明 Append 需要一个 slice 参数和零个或多个 int 型参数，在 Append 的实现中，这些 int 型参数与 int 型 slice 无异：\n// Append appends the items to the slice. // First version: just loop calling Extend. func Append(slice []int, items ...int) []int { for _, item := range items { slice = Extend(slice, item) } return slice } Notice the for range loop iterating over the elements of the items argument, which has implied type []int. Also notice the use of the blank identifier _ to discard the index in the loop, which we don’t need in this case.\n请注意，在 for range 循环中访问的 items 参数的隐式类型为 []int。此外，由于在此用不到下标，我们可用空白标识符 _ 忽略它们。\nTry it:\n试着运行：\nslice := []int{0, 1, 2, 3, 4} fmt.Println(slice) slice = Append(slice, 5, 6, 7, 8) fmt.Println(slice) Another new technique in this example is that we initialize the slice by writing a composite literal, which consists of the type of the slice followed by its elements in braces:\n从这个例子中我们可以学到一个新的技巧：在初始化 slice 的时候可以像下面这样在大括号中直接写出其所含的元素：\nslice := []int{0, 1, 2, 3, 4} The Append function is interesting for another reason. Not only can we append elements, we can append a whole second slice by “exploding” the slice into arguments using the ... notation at the call site:\nAppend 函数还有一点也很有趣，除了可以添加元素外，我们可以用 ... 符号将另一个 slice 打开而将其全部添加到 slice 中：\nslice1 := []int{0, 1, 2, 3, 4} slice2 := []int{55, 66, 77} fmt.Println(slice1) slice1 = Append(slice1, slice2...) // The '...' is essential!  fmt.Println(slice1) Of course, we can make Append more efficient by allocating no more than once, building on the innards of Extend:\n当然，我们可以将只分配至多一次空间以使得 Append 更加高效，在 Extend 中动动手脚：\n// Append appends the elements to the slice. // Efficient version. func Append(slice []int, elements ...int) []int { n := len(slice) total := len(slice) + len(elements) if total  cap(slice) { // Reallocate. Grow to 1.5 times the new size, so we can still grow.  newSize := total*3/2 + 1 newSlice := make([]int, total, newSize) copy(newSlice, slice) slice = newSlice } slice = slice[:total] copy(slice[n:], elements) return slice } Here, notice how we use copy twice, once to move the slice data to the newly allocated memory, and then to copy the appending items to the end of the old data.\n请注意两次 copy 是如何使用的，一次是把原 slice 的数据拷贝到新分配的 array 中，另一次是将要添加的元素拷贝到原数据的末尾处。\nTry it; the behavior is the same as before:\n试着跑一下，结果与此前相同：\nslice1 := []int{0, 1, 2, 3, 4} slice2 := []int{55, 66, 77} fmt.Println(slice1) slice1 = Append(slice1, slice2...) // The '...' is essential!  fmt.Println(slice1) Append: The built-in function 内置函数 append\nAnd so we arrive at the motivation for the design of the append built-in function. It does exactly what our Append example does, with equivalent efficiency, but it works for any slice type.\n目前，我们有足够的动力来设计内置函数 append 了。append 函数与此前的 Append 示例所做的事情一致，且同样高效，但它支持任意类型的 slice。\nA weakness of Go is that any generic-type operations must be provided by the run-time. Some day that may change, but for now, to make working with slices easier, Go provides a built-in generic append function. It works the same as our int slice version, but for any slice type.\n任意泛型操作都必须在运行时提供是 Go 语言的不足之一。或许有天这点会发生改变（译注：快了快了，Go 1.18 应该就支持泛型了），至少到目前为之，为了使得操作 slice 更为简单，Go 提供了通用的内置函数 append，它和我们 int 型 slice 版本的 Append 相同，但支持任意类型。\nRemember, since the slice header is always updated by a call to append, you need to save the returned slice after the call. In fact, the compiler won’t let you call append without saving the result.\n请记住，由于调用 append 总是会改变 slice header，你需要在调用 append 后保存其返回值。事实上，编译器要求你必须保存其返回值。\nHere are some one-liners intermingled with print statements. Try them, edit them and explore:\n下面是些关于调用 append 的例子，每次调用后会输出结果，运行并修改试试：\n// Create a couple of starter slices.  slice := []int{1, 2, 3} slice2 := []int{55, 66, 77} fmt.Println(\"Start slice: \", slice) fmt.Println(\"Start slice2:\", slice2) // Add an item to a slice.  slice = append(slice, 4) fmt.Println(\"Add one item:\", slice) // Add one slice to another.  slice = append(slice, slice2...) fmt.Println(\"Add one slice:\", slice) // Make a copy of a slice (of int).  slice3 := append([]int(nil), slice...) fmt.Println(\"Copy a slice:\", slice3) // Copy a slice to the end of itself.  fmt.Println(\"Before append to self:\", slice) slice = append(slice, slice...) fmt.Println(\"After append to self:\", slice) It’s worth taking a moment to think about the final one-liner of that example in detail to understand how the design of slices makes it possible for this simple call to work correctly.\n上面的最后一个 append 例子值得花时间仔细思考一下，slice 的设计是如何使得这样的简单调用可行的。\nThere are lots more examples of append, copy, and other ways to use slices on the community-built “Slice Tricks” Wiki page.\n在 “Slice Tricks” Wiki page 上有许多使用 append、copy 和其他方式来操作 slice 的小技巧。\nNil nil\nAs an aside, with our newfound knowledge we can see what the representation of a nil slice is. Naturally, it is the zero value of the slice header:\n说句题外话，以我们新学到的知识，我们可以表示出 nil slice。自然地，该 slice 的 header 中的值均为其类型所对应的零值：\nsliceHeader{ Length: 0, Capacity: 0, ZerothElement: nil, } or just\n或写作\nsliceHeader{} The key detail is that the element pointer is nil too. The slice created by\n重点在于指向元素数组的指针也为 nil。如此创建的 slice\narray[0:0] has length zero (and maybe even capacity zero) but its pointer is not nil, so it is not a nil slice.\n长度为 0 （或许 capacity 也为 0）但其指针不为 nil （译注：指向 array），故其不为 nil slice。\nAs should be clear, an empty slice can grow (assuming it has non-zero capacity), but a nil slice has no array to put values in and can never grow to hold even one element.\n应当区分清楚的是，一个 空 slice 可以增长 （设其 capacity 不为 0），但一个 nil slice 不指向任何 array，故而无法增长以存储元素。\nThat said, a nil slice is functionally equivalent to a zero-length slice, even though it points to nothing. It has length zero and can be appended to, with allocation. As an example, look at the one-liner above that copies a slice by appending to a nil slice.\n也就是说，即使 nil slice 不指向任何数组，但其在功能上和零长 slice 等价。nil slice 长度为 0，且可以通过分配底层数组的方式向其中添加元素，例如上面 append 例子中的倒数第二个，即向 nil slice 中拷贝 slice 的元素。\nStrings 字符串\nNow a brief section about strings in Go in the context of slices.\n现在来简要介绍一下 Go 中字符串的 slice 背景。\nStrings are actually very simple: they are just read-only slices of bytes with a bit of extra syntactic support from the language.\n字符串真的很简单：它们是具有一些来自于 Go 语言额外句法支持的字节所组成的只读型 slice。\nBecause they are read-only, there is no need for a capacity (you can’t grow them), but otherwise for most purposes you can treat them just like read-only slices of bytes.\n由于字符串 slice 是只读的，因此就不需要 capacity 了（你也没法增长字符串），但对于绝大多数情况，你都可以将它们视作只读字节 slice 来处理。\nFor starters, we can index them to access individual bytes:\n首先，我们可以用下标访问其中某个字节：\nslash := \"/usr/ken\"[0] // yields the byte value '/'. We can slice a string to grab a substring:\n可以切片得到子串：\nusr := \"/usr/ken\"[0:4] // yields the string \"/usr\" It should be obvious now what’s going on behind the scenes when we slice a string.\n我们对字符串切片的背后究竟如何应当是显而易见的。\nWe can also take a normal slice of bytes and create a string from it with the simple conversion:\n我们还可以将一个普通的字节 slice 转换为字符串：\nstr := string(slice) and go in the reverse direction as well:\n也可反过来转换：\nslice := []byte(usr) The array underlying a string is hidden from view; there is no way to access its contents except through the string. That means that when we do either of these conversions, a copy of the array must be made. Go takes care of this, of course, so you don’t have to. After either of these conversions, modifications to the array underlying the byte slice don’t affect the corresponding string.\n字符串背后的底层数组是不可见的，除了通过字符串之外，我们没有办法访问该数组的内容。这意味着我们上述的转换都会引发对底层数组的拷贝。Go 对这一点十分在意，当然，你不必如此关心。在转换之后，对于字节 slice 的底层数组的修改不会影响其对应的字符串。\nAn important consequence of this slice-like design for strings is that creating a substring is very efficient. All that needs to happen is the creation of a two-word string header. Since the string is read-only, the original string and the string resulting from the slice operation can share the same array safely.\n如此设计类 slice 的字符串的重要影响是使得子串的创建很高效，这样的操作只需要创建具有两个元素的字符串 header。由于字符串是只读的，对于原字符串和经过 slice 操作后所得的字符串可以安全地共享同一数组。\nA historical note: The earliest implementation of strings always allocated, but when slices were added to the language, they provided a model for efficient string handling. Some of the benchmarks saw huge speedups as a result.\n历史注：最早期的字符串实现方式总是会分配空间，但当 slice 被引入到 Go 语言后，它为高效的字符串操作提供了范例，原先一些巨量的基准测试速度因此加快了。\nThere’s much more to strings, of course, and a separate blog post covers them in greater depth.\n有许多关于字符串的讨论，separate blog post 中更进一步涵盖了它们。\nConclusion 结论\nTo understand how slices work, it helps to understand how they are implemented. There is a little data structure, the slice header, that is the item associated with the slice variable, and that header describes a section of a separately allocated array. When we pass slice values around, the header gets copied but the array it points to is always shared.\n了解 slice 的运行方式能够帮助我们更好地理解它们的实现。在 Go 语言中，slice header 是一个小型的数据结构，元素与 slice 变量相联系，而 slice header 描述了与 slice 变量分开存储的所分配数组的片段。当我们传递 slice 的值的时候，slice header 会被拷贝，但其所指的底层数组总是共享的。\nOnce you appreciate how they work, slices become not only easy to use, but powerful and expressive, especially with the help of the copy and append built-in functions.\n当你领会了 slice 的运行方式之后，slice 不仅简单好用，而且强大并富有表现力，尤其是在与内置函数 copy 和 append 配合使用的时候。\nMore reading There’s lots to find around the intertubes about slices in Go. As mentioned earlier, the “Slice Tricks” Wiki page has many examples. The Go Slices blog post describes the memory layout details with clear diagrams. Russ Cox’s Go Data Structures article includes a discussion of slices along with some of Go’s other internal data structures.\nThere is much more material available, but the best way to learn about slices is to use them.\n",
+  "wordCount" : "5012",
+  "inLanguage": "en",
+  "datePublished": "2021-07-13T00:00:00Z",
+  "dateModified": "2021-07-13T00:00:00Z",
+  "author":{
+    "@type": "Person",
+    "name": "Rob Pike"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://lachimere.github.io/posts/golang/arrays-slices-and-strings-the-mechanics-of-append/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "LaChimere",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://lachimere.github.io/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: #1d1e20;
+                --entry: #2e2e33;
+                --primary: rgba(255, 255, 255, 0.84);
+                --secondary: rgba(255, 255, 255, 0.56);
+                --tertiary: rgba(255, 255, 255, 0.16);
+                --content: rgba(255, 255, 255, 0.74);
+                --hljs-bg: #2e2e33;
+                --code-bg: #37383e;
+                --border: #333;
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-track {
+                background: 0 0;
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-thumb {
+                border-color: var(--theme);
+            }
+        }
+
+    </style>
+</noscript>
+
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://lachimere.github.io/" accesskey="h" title="LaChimere (Alt + H)">LaChimere</a>
+            <span class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </span>
+        </div>
+        <ul id="menu">
+            <li>
+                <a href="https://lachimere.github.io/archives/" title="Archive">
+                    <span>Archive</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/categories/" title="Categories">
+                    <span>Categories</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/search/" title="Search (Alt &#43; /)" accesskey=/>
+                    <span>Search</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://lachimere.github.io/tags/" title="Tags">
+                    <span>Tags</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <div class="breadcrumbs"><a href="https://lachimere.github.io/">Home</a>&nbsp;»&nbsp;<a href="https://lachimere.github.io/posts/">Posts</a></div>
+    <h1 class="post-title">
+      Arrays, slices (and strings): The mechanics of &#39;append&#39;
+    </h1>
+    <div class="post-meta">July 13, 2021&nbsp;·&nbsp;24 min&nbsp;·&nbsp;Rob Pike
+</div>
+  </header> <div class="toc">
+    <details >
+        <summary accesskey="c" title="(Alt + C)">
+            <div class="details">Table of Contents</div>
+        </summary>
+        <div class="inner"><ul>
+                <li>
+                    <a href="#arrays-slices-and-strings-the-mechanics-of-appendhttpsbloggolangorgslices" aria-label="Arrays, slices (and strings): The mechanics of &amp;lsquo;append&amp;rsquo;"><a href="https://blog.golang.org/slices">Arrays, slices (and strings): The mechanics of &lsquo;append&rsquo;</a></a><ul>
+                        
+                <li>
+                    <a href="#introductionhttpsbloggolangorgslicestoc_1" aria-label="Introduction"><a href="https://blog.golang.org/slices#TOC_1.">Introduction</a></a></li>
+                <li>
+                    <a href="#arrayshttpsbloggolangorgslicestoc_2" aria-label="Arrays"><a href="https://blog.golang.org/slices#TOC_2.">Arrays</a></a></li>
+                <li>
+                    <a href="#slices-the-slice-headerhttpsbloggolangorgslicestoc_3" aria-label="Slices: The slice header"><a href="https://blog.golang.org/slices#TOC_3.">Slices: The slice header</a></a></li>
+                <li>
+                    <a href="#passing-slices-to-functionshttpsbloggolangorgslicestoc_4" aria-label="Passing slices to functions"><a href="https://blog.golang.org/slices#TOC_4.">Passing slices to functions</a></a></li>
+                <li>
+                    <a href="#pointers-to-slices-method-receivershttpsbloggolangorgslicestoc_5" aria-label="Pointers to slices: Method receivers"><a href="https://blog.golang.org/slices#TOC_5.">Pointers to slices: Method receivers</a></a></li>
+                <li>
+                    <a href="#capacityhttpsbloggolangorgslicestoc_6" aria-label="Capacity"><a href="https://blog.golang.org/slices#TOC_6.">Capacity</a></a></li>
+                <li>
+                    <a href="#makehttpsbloggolangorgslicestoc_7" aria-label="Make"><a href="https://blog.golang.org/slices#TOC_7.">Make</a></a></li>
+                <li>
+                    <a href="#copyhttpsbloggolangorgslicestoc_8" aria-label="Copy"><a href="https://blog.golang.org/slices#TOC_8.">Copy</a></a></li>
+                <li>
+                    <a href="#append-an-examplehttpsbloggolangorgslicestoc_9" aria-label="Append: An example"><a href="https://blog.golang.org/slices#TOC_9.">Append: An example</a></a></li>
+                <li>
+                    <a href="#append-the-built-in-functionhttpsbloggolangorgslicestoc_10" aria-label="Append: The built-in function"><a href="https://blog.golang.org/slices#TOC_10.">Append: The built-in function</a></a></li>
+                <li>
+                    <a href="#nilhttpsbloggolangorgslicestoc_11" aria-label="Nil"><a href="https://blog.golang.org/slices#TOC_11.">Nil</a></a></li>
+                <li>
+                    <a href="#stringshttpsbloggolangorgslicestoc_12" aria-label="Strings"><a href="https://blog.golang.org/slices#TOC_12.">Strings</a></a></li>
+                <li>
+                    <a href="#conclusionhttpsbloggolangorgslicestoc_13" aria-label="Conclusion"><a href="https://blog.golang.org/slices#TOC_13.">Conclusion</a></a></li>
+                <li>
+                    <a href="#more-readinghttpsbloggolangorgslicestoc_14" aria-label="More reading"><a href="https://blog.golang.org/slices#TOC_14.">More reading</a></a>
+                </li>
+            </ul>
+            </li>
+            </ul>
+        </div>
+    </details>
+</div>
+
+  <div class="post-content"><h2 id="arrays-slices-and-strings-the-mechanics-of-appendhttpsbloggolangorgslices"><a href="https://blog.golang.org/slices">Arrays, slices (and strings): The mechanics of &lsquo;append&rsquo;</a><a hidden class="anchor" aria-hidden="true" href="#arrays-slices-and-strings-the-mechanics-of-appendhttpsbloggolangorgslices">#</a></h2>
+<p>Rob Pike, 26 Semptember 2013</p>
+<p>数组、切片（和字符串）——<code>append</code> 的方法</p>
+<p><strong>LaChimere 译</strong></p>
+<h3 id="introductionhttpsbloggolangorgslicestoc_1"><a href="https://blog.golang.org/slices#TOC_1.">Introduction</a><a hidden class="anchor" aria-hidden="true" href="#introductionhttpsbloggolangorgslicestoc_1">#</a></h3>
+<p>简介</p>
+<p>One of the most common features of procedural programming languages is the concept of an array. Arrays seem like simple things but there are many questions that must be answered when adding them to a language, such as:</p>
+<ul>
+<li>fixed-size or variable-size?</li>
+<li>is the size part of the type?</li>
+<li>what do multidimensional arrays look like?</li>
+<li>does the empty array have meaning?</li>
+</ul>
+<p>过程式编程语言最为普遍的特点之一是数组的概念。虽然数组看似简单，但在将其引入到程序语言时，有如下许多问题必须解决：</p>
+<ul>
+<li>数组大小是否固定？</li>
+<li>数组大小是否为数组类型的一部分？</li>
+<li>多维数组是什么样子？</li>
+<li>空数组是否具有意义？</li>
+</ul>
+<p>The answers to these questions affect whether arrays are just a feature of the language or a core part of its design.</p>
+<p>对于一个程序语言，上述问题的答案将会影响数组仅作为其特性之一还是作为其核心组成部分。</p>
+<p>In the early development of Go, it took about a year to decide the answers to these questions before the design felt right. The key step was the introduction of <em>slices</em>, which built on fixed-size <em>arrays</em> to give a flexible, extensible data structure. To this day, however, programmers new to Go often stumble over the way slices work, perhaps because experience from other languages has colored their thinking.</p>
+<p>在 Go 语言早期开发时期，我们在将数组设计得基本正确之前，经历了大约一年的时间来回答这些问题。其中，最为重要的一步便是对于 <em>slice</em>（切片）的引入。Slice 建立在固定大小的 <em>array</em> （数组）之上，是一种灵活且具有扩展性的数据结构。然而，时至今日，或许是受到了其他程序语言的影响，初学 Go 语言的程序员在理解 slice 工作方式上常常遇到困难。</p>
+<p>In this post we&rsquo;ll attempt to clear up the confusion. We&rsquo;ll do so by building up the pieces to explain how the <code>append</code> built-in function works, and why it works the way it does.</p>
+<p>为了消除这样的疑惑，在本文中，我们将通过例子来阐明 <code>append</code> 如何运行和它为何按照此方式运行的问题。</p>
+<h3 id="arrayshttpsbloggolangorgslicestoc_2"><a href="https://blog.golang.org/slices#TOC_2.">Arrays</a><a hidden class="anchor" aria-hidden="true" href="#arrayshttpsbloggolangorgslicestoc_2">#</a></h3>
+<p>数组</p>
+<p>Arrays are an important building block in Go, but like the foundation of a building they are often hidden below more visible components. We must talk about them briefly before we move on to the more interesting, powerful, and prominent idea of slices.</p>
+<p>Array 是 Go 语言的重要组成部分之一，但如地基一般，数组常常隐藏在其他可见的组成背后。在介绍更为有趣、强大和著名的 slice 之前，我们必须先简要介绍一下 array。</p>
+<p>Arrays are not often seen in Go programs because the size of an array is part of its type, which limits its expressive power.</p>
+<p>由于固定的大小限制了其表现力，array 并不常为 Go 程序员使用。</p>
+<p>The declaration</p>
+<p>如下声明了一个 256 字节大小的 <code>buffer</code> 数组。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">var</span> <span style="color:#a6e22e">buffer</span> [<span style="color:#ae81ff">256</span>]<span style="color:#66d9ef">byte</span>
+</code></pre></div><p>declares the variable <code>buffer</code>, which holds 256 bytes. The type of <code>buffer</code> includes its size, <code>[256]byte</code>. An array with 512 bytes would be of the distinct type <code>[512]byte</code>.</p>
+<p><code>buffer</code> 的类型，即 <code>[256]byte</code>，包含了其大小。那么一个 512 字节大小的数组的类型可为 <code>[512]byte</code>。</p>
+<p>The data associated with an array is just that: an array of elements. Schematically, our buffer looks like this in memory,</p>
+<p>与一个数组相联系的数据就是“数组的元素”。简要地讲，我们的 <code>buffer</code> 在内存中就像下面这样：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">buffer</span>: <span style="color:#66d9ef">byte</span> <span style="color:#66d9ef">byte</span> <span style="color:#66d9ef">byte</span> <span style="color:#f92672">...</span> <span style="color:#ae81ff">256</span> <span style="color:#a6e22e">times</span> <span style="color:#f92672">...</span> <span style="color:#66d9ef">byte</span> <span style="color:#66d9ef">byte</span> <span style="color:#66d9ef">byte</span>
+</code></pre></div><p>That is, the variable holds 256 bytes of data and nothing else. We can access its elements with the familiar indexing syntax, <code>buffer[0]</code>, <code>buffer[1]</code>, and so on through <code>buffer[255]</code>. (The index range 0 through 255 covers 256 elements.) Attempting to index <code>buffer</code> with a value outside this range will crash the program.</p>
+<p>这表明，变量 <code>buffer</code> 只保存着 256 字节的数据。我们可以用熟悉的索引方式来访问其中的元素，如 <code>buffer[0]</code>、<code>buffer[1]</code> 直到 <code>buffer[255]</code>。（数组下标从 0 到 255 表示共 256 个元素）越界访问 <code>buffer</code> 数组会导致程序崩溃。</p>
+<p>There is a built-in function called <code>len</code> that returns the number of elements of an array or slice and also of a few other data types. For arrays, it&rsquo;s obvious what <code>len</code> returns. In our example, <code>len(buffer)</code> returns the fixed value 256.</p>
+<p>内置函数 <code>len</code> 会返回 array 或 slice 等数据类型的元素个数。对于 array 来说 <code>len</code> 所返回的结果显而易见，在上述例子中，<code>len(buffer)</code> 将返回一个固定的值 256。</p>
+<p>Arrays have their place—they are a good representation of a transformation matrix for instance—but their most common purpose in Go is to hold storage for a slice.</p>
+<p>Array 具有自己的空间，可以很好地表示出变换矩阵等。然而，array 在 Go 语言中最为普遍的用途是为 slice 提供存储空间（译注：即作为 slice 的底层数组）。</p>
+<h3 id="slices-the-slice-headerhttpsbloggolangorgslicestoc_3"><a href="https://blog.golang.org/slices#TOC_3.">Slices: The slice header</a><a hidden class="anchor" aria-hidden="true" href="#slices-the-slice-headerhttpsbloggolangorgslicestoc_3">#</a></h3>
+<p>切片：slice header</p>
+<p>Slices are where the action is, but to use them well one must understand exactly what they are and what they do.</p>
+<p>Slice 是我们常用来操作的类型，但只有准确地理解 slice 及其功能我们才能用好它。</p>
+<p>A slice is a data structure describing a contiguous section of an array stored separately from the slice variable itself. <em>A slice is not an array</em>. A slice <em>describes</em> a piece of an array.</p>
+<p>Slice 是用来描述数组上的一段连续片段的数据结构，该片段与 slice 是分开存储的。<em>Slice 并非 array</em>，它<em>描述</em>了 array 的一个片段。</p>
+<p>Given our <code>buffer</code> array variable from the previous section, we could create a slice that describes elements 100 through 150 (to be precise, 100 through 149, inclusive) by <em>slicing</em> the array:</p>
+<p>我们可以给此前提到的 <code>buffer</code> 数组进行<em>切片</em>以创建一个 slice 来描述其第 100 ~ 150 个元素（准确地说，是第 100 个到 第 149 个元素，闭区间）：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">var</span> <span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">byte</span> = <span style="color:#a6e22e">buffer</span>[<span style="color:#ae81ff">100</span>:<span style="color:#ae81ff">150</span>]
+</code></pre></div><p>In that snippet we used the full variable declaration to be explicit. The variable <code>slice</code> has type <code>[]byte</code>, pronounced &ldquo;slice of bytes&rdquo;, and is initialized from the array, called <code>buffer</code>, by slicing elements 100 (inclusive) through 150 (exclusive). The more idiomatic syntax would drop the type, which is set by the initializing expression:</p>
+<p>上述代码中，我们显式地对声明了变量。变量 <code>slice</code> 的类型为 <code>[]byte</code>，即 byte 的切片。同时，<code>slice</code> 也通过对 <code>buffer</code> 数组的第 $[100, 150)$ 个元素切片而进行了初始化，更为习惯的用法是省略掉 <code>slice</code> 的类型而用初始化表达式来推断，如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">var</span> <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">buffer</span>[<span style="color:#ae81ff">100</span>:<span style="color:#ae81ff">150</span>]
+</code></pre></div><p>Inside a function we could use the short declaration form,</p>
+<p>在函数中我们可使用如下短声明式：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">buffer</span>[<span style="color:#ae81ff">100</span>:<span style="color:#ae81ff">150</span>]
+</code></pre></div><p>What exactly is this slice variable? It&rsquo;s not quite the full story, but for now think of a slice as a little data structure with two elements: a length and a pointer to an element of an array. You can think of it as being built like this behind the scenes:</p>
+<p>Slice 变量究竟是什么？现在我们还没有完全回答这个问题，不过你可以将 slice 设想为一个具有两种元素的数据结构：长度 length 和指向存放数据元素数组的指针 pointer，就像下面这样：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">sliceHeader</span> <span style="color:#66d9ef">struct</span> {
+    <span style="color:#a6e22e">Length</span>        <span style="color:#66d9ef">int</span>
+    <span style="color:#a6e22e">ZerothElement</span> <span style="color:#f92672">*</span><span style="color:#66d9ef">byte</span>
+}
+
+<span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">sliceHeader</span>{
+    <span style="color:#a6e22e">Length</span>:        <span style="color:#ae81ff">50</span>,
+    <span style="color:#a6e22e">ZerothElement</span>: <span style="color:#f92672">&amp;</span><span style="color:#a6e22e">buffer</span>[<span style="color:#ae81ff">100</span>],
+}
+</code></pre></div><p>Of course, this is just an illustration. Despite what this snippet says that <code>sliceHeader</code> struct is not visible to the programmer, and the type of the element pointer depends on the type of the elements, but this gives the general idea of the mechanics.</p>
+<p>当然，这只是一种说明。尽管在这个代码块中，<code>sliceHeader</code> 对程序员而言不可见，且其中的数据元素指针类型取决于数据元素类型，但这是对 slice 实现方法的一个大体的说明。</p>
+<p>So far we&rsquo;ve used a slice operation on an array, but we can also slice a slice, like this:</p>
+<p>除了可以对 array 进行操作，我们像下面这样还可以对 slice 进行切片：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice2</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">5</span>:<span style="color:#ae81ff">10</span>]
+</code></pre></div><p>Just as before, this operation creates a new slice, in this case with elements 5 through 9 (inclusive) of the original slice, which means elements 105 through 109 of the original array. The underlying <code>sliceHeader</code> struct for the <code>slice2</code> variable looks like this:</p>
+<p>如此前一样，这样的操作将会创建一个新的 slice。在上面这个例子中，新的 slice 表示原始 slice 中的第 $[5,9]$ 个元素，即原 array 中的第 $[105,109]$ 个元素。对于 <code>slice2</code> 而言，底层的 <code>sliceHeader</code> 像这样：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice2</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">sliceHeader</span>{
+    <span style="color:#a6e22e">Length</span>:        <span style="color:#ae81ff">5</span>,
+    <span style="color:#a6e22e">ZerothElement</span>: <span style="color:#f92672">&amp;</span><span style="color:#a6e22e">buffer</span>[<span style="color:#ae81ff">105</span>],
+}
+</code></pre></div><p>Notice that this header still points to the same underlying array, stored in the <code>buffer</code> variable.</p>
+<p>请注意，这个 <code>sliceHeader</code> 依然指向同一底层数组，即 <code>buffer</code>。</p>
+<p>We can also <em>reslice</em>, which is to say slice a slice and store the result back in the original slice structure. After</p>
+<p>我们还可以对一个 slice <em>再分片</em>，并且可以将分片的结果存放于原 slice 中。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">5</span>:<span style="color:#ae81ff">10</span>]
+</code></pre></div><p>the <code>sliceHeader</code> structure for the <code>slice</code> variable looks just like it did for the <code>slice2</code> variable. You&rsquo;ll see reslicing used often, for example to truncate a slice. This statement drops the first and last elements of our slice:</p>
+<p>在对 <code>slice</code> 进行上面的操作后，<code>slice</code> 的 <code>sliceHeader</code> 结构与此前对 <code>slice2</code> 进行再切片操作后的 <code>sliceHeader</code> 类似。你会发现，再分片的操作时常用到，例如截取 slice，如下语句便截掉了 <code>slice</code> 的首尾元素：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">1</span>:len(<span style="color:#a6e22e">slice</span>)<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>]
+</code></pre></div><p>[Exercise: Write out what the <code>sliceHeader</code> struct looks like after this assignment.]</p>
+<p>【练习：写出上面赋值语句操作过后的 <code>sliceHeader</code> 结构。】</p>
+<p>You&rsquo;ll often hear experienced Go programmers talk about the &ldquo;slice header&rdquo; because that really is what&rsquo;s stored in a slice variable. For instance, when you call a function that takes a slice as an argument, such as <a href="https://golang.org/pkg/bytes/#IndexRune">bytes.IndexRune</a>, that header is what gets passed to the function. In this call,</p>
+<p>你会常常听到经验丰富的 Go 程序员讨论“slice header”，这是因为“slice header”是 slice 变量真正存储的内容。举个例子，当你想要将 slice 作为参数去调用一个函数时，如 <a href="https://golang.org/pkg/bytes/#IndexRune">bytes.IndexRune</a>，“slice header”是真正传给函数的参数。在如下函数调用中，</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slashPos</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">bytes</span>.<span style="color:#a6e22e">IndexRune</span>(<span style="color:#a6e22e">slice</span>, <span style="color:#e6db74">&#39;/&#39;</span>)
+</code></pre></div><p>the <code>slice</code> argument that is passed to the <code>IndexRune</code> function is, in fact, a &ldquo;slice header&rdquo;.</p>
+<p>传递给函数 <code>IndexRune</code> 的 <code>slice</code> 参数实际上是一个“slice header”。</p>
+<p>There&rsquo;s one more data item in the slice header, which we talk about below, but first let&rsquo;s see what the existence of the slice header means when you program with slices.</p>
+<p>我们将会在下面讨论 slice header 中另一个数据元素，不过在此之前，我们不妨先看看在涉及 slice 的编程中 slice header 的存在意味着什么。</p>
+<h3 id="passing-slices-to-functionshttpsbloggolangorgslicestoc_4"><a href="https://blog.golang.org/slices#TOC_4.">Passing slices to functions</a><a hidden class="anchor" aria-hidden="true" href="#passing-slices-to-functionshttpsbloggolangorgslicestoc_4">#</a></h3>
+<p>传函数以 slice</p>
+<p>It&rsquo;s important to understand that even though a slice contains a pointer, it is itself a value. Under the covers, it is a struct value holding a pointer and a length. It is <em>not</em> a pointer to a struct.</p>
+<p>尽管 slice 包含一个 指针 pointer，但 slice 自身是一个值，理解这一点非常重要。在 Go 语言内部，slice 实际上是一个保存着指针 pointer 和 长度 length 的结构体，而非单纯的指向另一种结构的指针。</p>
+<p>This matters.</p>
+<p>这一点非常重要。</p>
+<p>When we called <code>IndexRune</code> in the previous example, it was passed a <em>copy</em> of the slice header. That behavior has important ramifications.</p>
+<p>在此前的例子中，当我们调用 <code>IndexRune</code> 函数时，我们传给该函数一个 slicer header 的拷贝，这样的行为会产生意义重大而又难以预测的结果。</p>
+<p>Consider this simple function:</p>
+<p>如下函数：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">AddOneToEachElement</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">byte</span>) {
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#66d9ef">range</span> <span style="color:#a6e22e">slice</span> {
+        <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">i</span>]<span style="color:#f92672">++</span>
+    }
+}
+</code></pre></div><p>It does just what its name implies, iterating over the indices of a slice (using a <code>for</code> <code>range</code> loop), incrementing its elements.</p>
+<p>该函数功能如其名，递增 slice 中每一个元素。</p>
+<p>Try it:</p>
+<p>尝试运行下面这段代码：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">main</span>() {
+    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">buffer</span>[<span style="color:#ae81ff">10</span>:<span style="color:#ae81ff">20</span>]
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#ae81ff">0</span>; <span style="color:#a6e22e">i</span> &lt; len(<span style="color:#a6e22e">slice</span>); <span style="color:#a6e22e">i</span><span style="color:#f92672">++</span> {
+        <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">i</span>] = byte(<span style="color:#a6e22e">i</span>)
+    }
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;before&#34;</span>, <span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">AddOneToEachElement</span>(<span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;after&#34;</span>, <span style="color:#a6e22e">slice</span>)
+}
+</code></pre></div><p>(You can edit and re-execute these runnable snippets if you want to explore.)</p>
+<p>（想要探究的话，你可以编辑并且再次执行这段代码。）</p>
+<p>Even though the slice <em>header</em> is passed by value, the header includes a pointer to elements of an array, so both the original slice header and the copy of the header passed to the function describe the same array. Therefore, when the function returns, the modified elements can be seen through the original slice variable.</p>
+<p>虽然 slice <em>header</em> 以传值（pass by value）的方式传递给函数，但 slice header 中所含的的指针指向元素数组，因此原 slice header 及其传递给函数的拷贝描述着同一个数组，故当函数返回时，我们可以通过原 slice 变量观察到元素已发生了修改。</p>
+<p>The argument to the function really is a copy, as this example shows:</p>
+<p>下面代码印证了传递给函数的 slice 参数实际上是原 slice 的一个拷贝：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">SubtractOneFromLength</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">byte</span>) []<span style="color:#66d9ef">byte</span> {
+    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">0</span> : len(<span style="color:#a6e22e">slice</span>)<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>]
+    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">slice</span>
+}
+
+<span style="color:#66d9ef">func</span> <span style="color:#a6e22e">main</span>() {
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Before: len(slice) =&#34;</span>, len(<span style="color:#a6e22e">slice</span>))
+    <span style="color:#a6e22e">newSlice</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">SubtractOneFromLength</span>(<span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;After:  len(slice) =&#34;</span>, len(<span style="color:#a6e22e">slice</span>))
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;After:  len(newSlice) =&#34;</span>, len(<span style="color:#a6e22e">newSlice</span>))
+}
+</code></pre></div><p>Here we see that the <em>contents</em> of a slice argument can be modified by a function, but its <em>header</em> cannot. The length stored in the <code>slice</code> variable is not modified by the call to the function, since the function is passed a copy of the slice header, not the original. Thus if we want to write a function that modifies the header, we must return it as a result parameter, just as we have done here. The <code>slice</code> variable is unchanged but the returned value has the new length, which is then stored in <code>newSlice</code>,</p>
+<p>在此我们可以看到，slice 参数的<em>内容</em>可以为函数所修改，但其 <em>header</em> 却不能被修改。存放在 <code>slice</code> 变量中的长度 length 在函数调用后并未发生修改，这是因为我们是将 slice header 的拷贝而非原 slice header 传递给了函数。因此，如果我们想要在函数中修改 slice header，我们必须将 slice header 作为结果返回，如 <code>SubstractOneFromLength</code> 所做的那样。<code>slice</code> 变量没有发生改变，但函数所返回的值 <code>newSlice</code> 中保存了新的长度 length。</p>
+<h3 id="pointers-to-slices-method-receivershttpsbloggolangorgslicestoc_5"><a href="https://blog.golang.org/slices#TOC_5.">Pointers to slices: Method receivers</a><a hidden class="anchor" aria-hidden="true" href="#pointers-to-slices-method-receivershttpsbloggolangorgslicestoc_5">#</a></h3>
+<p>指向 slice 的指针：方法的 receiver</p>
+<p>Another way to have a function modify the slice header is to pass a pointer to it. Here&rsquo;s a variant of our previous example that does this:</p>
+<p>另一种通过函数修改 slice header 的方式是传指针。下面我们将此前的例子进行了一些变化：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">PtrSubtractOneFromLength</span>(<span style="color:#a6e22e">slicePtr</span> <span style="color:#f92672">*</span>[]<span style="color:#66d9ef">byte</span>) {
+    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">slicePtr</span>
+    <span style="color:#f92672">*</span><span style="color:#a6e22e">slicePtr</span> = <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">0</span> : len(<span style="color:#a6e22e">slice</span>)<span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>]
+}
+
+<span style="color:#66d9ef">func</span> <span style="color:#a6e22e">main</span>() {
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Before: len(slice) =&#34;</span>, len(<span style="color:#a6e22e">slice</span>))
+    <span style="color:#a6e22e">PtrSubtractOneFromLength</span>(<span style="color:#f92672">&amp;</span><span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;After:  len(slice) =&#34;</span>, len(<span style="color:#a6e22e">slice</span>))
+}
+</code></pre></div><p>It seems clumsy in that example, especially dealing with the extra level of indirection (a temporary variable helps), but there is one common case where you see pointers to slices. It is idiomatic to use a pointer receiver for a method that modifies a slice.</p>
+<p>此例虽看上去挺笨拙的，尤其是通过一个临时变量来辅助我们间接访问 slice，但它的确是使用指向 slice 的指针时一种较为普遍的情形。我们习惯上用一个指针类型的 receiver 来调用方法以修改 slice。</p>
+<p>Let&rsquo;s say we wanted to have a method on a slice that truncates it at the final slash. We could write it like this:</p>
+<p>比如，我们可以像如下代码这样通过调用一个方法实现截取 slice 最后一个 <code>/</code> 之前的 slice：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">path</span> []<span style="color:#66d9ef">byte</span>
+
+<span style="color:#66d9ef">func</span> (<span style="color:#a6e22e">p</span> <span style="color:#f92672">*</span><span style="color:#a6e22e">path</span>) <span style="color:#a6e22e">TruncateAtFinalSlash</span>() {
+    <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">bytes</span>.<span style="color:#a6e22e">LastIndex</span>(<span style="color:#f92672">*</span><span style="color:#a6e22e">p</span>, []byte(<span style="color:#e6db74">&#34;/&#34;</span>))
+    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">0</span> {
+        <span style="color:#f92672">*</span><span style="color:#a6e22e">p</span> = (<span style="color:#f92672">*</span><span style="color:#a6e22e">p</span>)[<span style="color:#ae81ff">0</span>:<span style="color:#a6e22e">i</span>]
+    }
+}
+
+<span style="color:#66d9ef">func</span> <span style="color:#a6e22e">main</span>() {
+    <span style="color:#a6e22e">pathName</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">path</span>(<span style="color:#e6db74">&#34;/usr/bin/tso&#34;</span>) <span style="color:#75715e">// Conversion from string to path.
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">pathName</span>.<span style="color:#a6e22e">TruncateAtFinalSlash</span>()
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;%s\n&#34;</span>, <span style="color:#a6e22e">pathName</span>)
+}
+</code></pre></div><p>If you run this example you&rsquo;ll see that it works properly, updating the slice in the caller.</p>
+<p>跑一跑这段代码你会发现它能够通过调用函数正确地更新 slice。</p>
+<p>[Exercise: Change the type of the receiver to be a value rather than a pointer and run it again. Explain what happens.]</p>
+<p>【练习：将 receiver 的类型从指针改为值，再跑一跑试试，并解释所发生的现象。】</p>
+<p>On the other hand, if we wanted to write a method for <code>path</code> that upper-cases the ASCII letters in the path (parochially ignoring non-English names), the method could be a value because the value receiver will still point to the same underlying array.</p>
+<p>不过，当我们想要用设计一个 <code>path</code> 的方法来将其中的 ASCII 字母转换为大写时（其余的非英文字母均忽略），该方法的 receiver 可以为值，这是因为以值表示的 receiver 所指向底层数组和原 slice 所指向的底层数组是同一个。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">path</span> []<span style="color:#66d9ef">byte</span>
+
+<span style="color:#66d9ef">func</span> (<span style="color:#a6e22e">p</span> <span style="color:#a6e22e">path</span>) <span style="color:#a6e22e">ToUpper</span>() {
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span>, <span style="color:#a6e22e">b</span> <span style="color:#f92672">:=</span> <span style="color:#66d9ef">range</span> <span style="color:#a6e22e">p</span> {
+        <span style="color:#66d9ef">if</span> <span style="color:#e6db74">&#39;a&#39;</span> <span style="color:#f92672">&lt;=</span> <span style="color:#a6e22e">b</span> <span style="color:#f92672">&amp;&amp;</span> <span style="color:#a6e22e">b</span> <span style="color:#f92672">&lt;=</span> <span style="color:#e6db74">&#39;z&#39;</span> {
+            <span style="color:#a6e22e">p</span>[<span style="color:#a6e22e">i</span>] = <span style="color:#a6e22e">b</span> <span style="color:#f92672">+</span> <span style="color:#e6db74">&#39;A&#39;</span> <span style="color:#f92672">-</span> <span style="color:#e6db74">&#39;a&#39;</span>
+        }
+    }
+}
+
+<span style="color:#66d9ef">func</span> <span style="color:#a6e22e">main</span>() {
+    <span style="color:#a6e22e">pathName</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">path</span>(<span style="color:#e6db74">&#34;/usr/bin/tso&#34;</span>)
+    <span style="color:#a6e22e">pathName</span>.<span style="color:#a6e22e">ToUpper</span>()
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;%s\n&#34;</span>, <span style="color:#a6e22e">pathName</span>)
+}
+</code></pre></div><p>Here the <code>ToUpper</code> method uses two variables in the <code>for</code> <code>range</code> construct to capture the index and slice element. This form of loop avoids writing <code>p[i]</code> multiple times in the body.</p>
+<p>这里的 <code>ToUpper</code> 方法在 <code>for range</code> 语句中取得了 slice 的下标和与之对应的元素，这种形式可以避免在函数体中出现多次 <code>p[i]</code>。</p>
+<p>[Exercise: Convert the <code>ToUpper</code> method to use a pointer receiver and see if its behavior changes.]</p>
+<p>【练习：将 <code>ToUpper</code> 方法改用为指针类型的 receiver 来调用，看看会发生什么变化。】</p>
+<p>[Advanced exercise: Convert the <code>ToUpper</code> method to handle Unicode letters, not just ASCII.]</p>
+<p>【进阶练习：将 <code>ToUpper</code> 改为可以处理 Unicode 字符而非仅局限于 ASCII 的方法。】</p>
+<h3 id="capacityhttpsbloggolangorgslicestoc_6"><a href="https://blog.golang.org/slices#TOC_6.">Capacity</a><a hidden class="anchor" aria-hidden="true" href="#capacityhttpsbloggolangorgslicestoc_6">#</a></h3>
+<p>容量</p>
+<p>Look at the following function that extends its argument slice of <code>ints</code> by one element:</p>
+<p>我们先来看看下面这个函数，在此函数中，我们给传入的 slice 参数扩展了空间：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Extend</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">int</span>, <span style="color:#a6e22e">element</span> <span style="color:#66d9ef">int</span>) []<span style="color:#66d9ef">int</span> {
+    <span style="color:#a6e22e">n</span> <span style="color:#f92672">:=</span> len(<span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">0</span> : <span style="color:#a6e22e">n</span><span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>]
+    <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">n</span>] = <span style="color:#a6e22e">element</span>
+    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">slice</span>
+}
+</code></pre></div><p>(Why does it need to return the modified slice?) Now run it:</p>
+<p>（为什么这个函数需要返回修改了的 slice？）现在我们运行看看：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">main</span>() {
+    <span style="color:#66d9ef">var</span> <span style="color:#a6e22e">iBuffer</span> [<span style="color:#ae81ff">10</span>]<span style="color:#66d9ef">int</span>
+    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">iBuffer</span>[<span style="color:#ae81ff">0</span>:<span style="color:#ae81ff">0</span>]
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#ae81ff">0</span>; <span style="color:#a6e22e">i</span> &lt; <span style="color:#ae81ff">20</span>; <span style="color:#a6e22e">i</span><span style="color:#f92672">++</span> {
+        <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">Extend</span>(<span style="color:#a6e22e">slice</span>, <span style="color:#a6e22e">i</span>)
+        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice</span>)
+    }
+}
+</code></pre></div><p>See how the slice grows until&hellip; it doesn&rsquo;t.</p>
+<p>看看它会增长到······好吧它不会。</p>
+<p>It&rsquo;s time to talk about the third component of the slice header: its <em>capacity</em>. Besides the array pointer and length, the slice header also stores its capacity:</p>
+<p>是时候来讨论下 slice header 的第三个组成部分了——容量（capacity）。除了指向数组的指针和长度外，slice header 还保存了它的容量：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">sliceHeader</span> <span style="color:#66d9ef">struct</span> {
+    <span style="color:#a6e22e">Length</span>        <span style="color:#66d9ef">int</span>
+    <span style="color:#a6e22e">Capacity</span>      <span style="color:#66d9ef">int</span>
+    <span style="color:#a6e22e">ZerothElement</span> <span style="color:#f92672">*</span><span style="color:#66d9ef">byte</span>
+}
+</code></pre></div><p>The <code>Capacity</code> field records how much space the underlying array actually has; it is the maximum value the <code>Length</code> can reach. Trying to grow the slice beyond its capacity will step beyond the limits of the array and will trigger a panic.</p>
+<p><code>Capacity</code> 记录了底层数组的实际空间大小，它是 <code>Length</code> 能够达到的最大值。想要将 slice 增长到超过它的 capacity 将会导致数组越界，从而引发 panic。</p>
+<p>After our example slice is created by</p>
+<p>在我们的例子中 slice 是如是创建的：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">iBuffer</span>[<span style="color:#ae81ff">0</span>:<span style="color:#ae81ff">0</span>]
+</code></pre></div><p>its header looks like this:</p>
+<p>它的 header 就像这样：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">sliceHeader</span>{
+    <span style="color:#a6e22e">Length</span>:        <span style="color:#ae81ff">0</span>,
+    <span style="color:#a6e22e">Capacity</span>:      <span style="color:#ae81ff">10</span>,
+    <span style="color:#a6e22e">ZerothElement</span>: <span style="color:#f92672">&amp;</span><span style="color:#a6e22e">iBuffer</span>[<span style="color:#ae81ff">0</span>],
+}
+</code></pre></div><p>The <code>Capacity</code> field is equal to the length of the underlying array, minus the index in the array of the first element of the slice (zero in this case). If you want to inquire what the capacity is for a slice, use the built-in function <code>cap</code>:</p>
+<p><code>Capacity</code> 与底层数组的长度减去 slice 首元素在 array 中的下标（此例中为 0）所得的差相等。你可以调用内置函数 <code>cap</code> 来得到一个 slice 的 capacity：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">if</span> cap(<span style="color:#a6e22e">slice</span>) <span style="color:#f92672">==</span> len(<span style="color:#a6e22e">slice</span>) {
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;slice is full!&#34;</span>)
+}
+</code></pre></div><h3 id="makehttpsbloggolangorgslicestoc_7"><a href="https://blog.golang.org/slices#TOC_7.">Make</a><a hidden class="anchor" aria-hidden="true" href="#makehttpsbloggolangorgslicestoc_7">#</a></h3>
+<p><code>make</code></p>
+<p>What if we want to grow the slice beyond its capacity? You can&rsquo;t! By definition, the capacity is the limit to growth. But you can achieve an equivalent result by allocating a new array, copying the data over, and modifying the slice to describe the new array.</p>
+<p>如果我们想要将 slice 增长到超过其 capacity 的大小会怎么样呢？不行的！在定义上，capacity 限制了 slice 的增长，但你可以通过一种等价的方式来达到此目的，即分配一个新的数组，将数据复制过去，再修改 slice 以令其来描述新分配的数组。</p>
+<p>Let&rsquo;s start with allocation. We could use the <code>new</code> built-in function to allocate a bigger array and then slice the result, but it is simpler to use the <code>make</code> built-in function instead. It allocates a new array and creates a slice header to describe it, all at once. The <code>make</code> function takes three arguments: the type of the slice, its initial length, and its capacity, which is the length of the array that <code>make</code> allocates to hold the slice data. This call creates a slice of length 10 with room for 5 more (15-10), as you can see by running it:</p>
+<p>先来说说分配的事。我们可以通过内置函数 <code>new</code> 来分配一个更大的数组并将其切片，但更为简单的做法是使用内置函数 <code>make</code>。<code>make</code> 能够一次性分配一个新的数组并创建描述此数组的 slice header。<code>make</code> 函数有三个参数：slice 的类型、初始长度和 capacity，其中 capacity 即为 <code>make</code> 为 slice 所分配的数组的长度。下面的代码创建了一个初始长度为 10 且具有 5 个 （$15-10$）可增长空间的 slice，来跑跑看：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, <span style="color:#ae81ff">10</span>, <span style="color:#ae81ff">15</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;len: %d, cap: %d\n&#34;</span>, len(<span style="color:#a6e22e">slice</span>), cap(<span style="color:#a6e22e">slice</span>))
+</code></pre></div><p>This snippet doubles the capacity of our <code>int</code> slice but keeps its length the same:</p>
+<p>下面的代码块将我们上面的 <code>int</code> 型 slice 的 capacity 翻倍，但长度保持不变：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, <span style="color:#ae81ff">10</span>, <span style="color:#ae81ff">15</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;len: %d, cap: %d\n&#34;</span>, len(<span style="color:#a6e22e">slice</span>), cap(<span style="color:#a6e22e">slice</span>))
+    <span style="color:#a6e22e">newSlice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, len(<span style="color:#a6e22e">slice</span>), <span style="color:#ae81ff">2</span><span style="color:#f92672">*</span>cap(<span style="color:#a6e22e">slice</span>))
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#66d9ef">range</span> <span style="color:#a6e22e">slice</span> {
+        <span style="color:#a6e22e">newSlice</span>[<span style="color:#a6e22e">i</span>] = <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">i</span>]
+    }
+    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">newSlice</span>
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;len: %d, cap: %d\n&#34;</span>, len(<span style="color:#a6e22e">slice</span>), cap(<span style="color:#a6e22e">slice</span>))
+</code></pre></div><p>After running this code the slice has much more room to grow before needing another reallocation.</p>
+<p>运行上面的代码后，<code>slice</code> 在重新分配空间之前将有更多可增长的空间。</p>
+<p>When creating slices, it&rsquo;s often true that the length and capacity will be same. The <code>make</code> built-in has a shorthand for this common case. The length argument defaults to the capacity, so you can leave it out to set them both to the same value. After</p>
+<p>当创建 slice 时，slice 的长度和 capacity 常常是相等的，这种情况下在 <code>make</code> 中不必写出 capacity，因为其 capacity 的值默认为 length 参数的值。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">gophers</span> <span style="color:#f92672">:=</span> make([]<span style="color:#a6e22e">Gopher</span>, <span style="color:#ae81ff">10</span>)
+</code></pre></div><p>the <code>gophers</code> slice has both its length and capacity set to 10.</p>
+<p>上面的代码将 <code>gophers</code> slice 的长度和 capacity 均设为 10。</p>
+<h3 id="copyhttpsbloggolangorgslicestoc_8"><a href="https://blog.golang.org/slices#TOC_8.">Copy</a><a hidden class="anchor" aria-hidden="true" href="#copyhttpsbloggolangorgslicestoc_8">#</a></h3>
+<p><code>copy</code></p>
+<p>When we doubled the capacity of our slice in the previous section, we wrote a loop to copy the old data to the new slice. Go has a built-in function, <code>copy</code>, to make this easier. Its arguments are two slices, and it copies the data from the right-hand argument to the left-hand argument. Here&rsquo;s our example rewritten to use <code>copy</code>:</p>
+<p>在前面我们将 slice 的 capacity 翻倍后，我们写了一个循环来将原先的数据拷贝到新 slice 中。对此，Go 语言提供了内置函数 <code>copy</code> 来简化我们的操作。<code>copy</code> 有两个参数，第一个参数为目的参数，第二个为源参数。下面是使用 <code>copy</code> 的例子：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">newSlice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, len(<span style="color:#a6e22e">slice</span>), <span style="color:#ae81ff">2</span><span style="color:#f92672">*</span>cap(<span style="color:#a6e22e">slice</span>))
+    copy(<span style="color:#a6e22e">newSlice</span>, <span style="color:#a6e22e">slice</span>)
+</code></pre></div><p>The <code>copy</code> function is smart. It only copies what it can, paying attention to the lengths of both arguments. In other words, the number of elements it copies is the minimum of the lengths of the two slices. This can save a little bookkeeping. Also, <code>copy</code> returns an integer value, the number of elements it copied, although it&rsquo;s not always worth checking.</p>
+<p><code>copy</code> 函数很是聪明，请注意两个参数的长度，<code>copy</code> 函数只拷贝它能够拷贝的部分。也就是说，会被拷贝的元素数量是两个 slices 的长度的较小值，如此可以省去一些记录。此外，<code>copy</code> 会返回一个表示被拷贝的元素数量的整数，尽管这个数并不经常有用。</p>
+<p>The <code>copy</code> function also gets things right when source and destination overlap, which means it can be used to shift items around in a single slice. Here&rsquo;s how to use <code>copy</code> to insert a value into the middle of a slice.</p>
+<p><code>copy</code> 能够正确处理 src 和 dest 有相交部分的情况，这意味着我们可以在一个 slice 中使用 <code>copy</code> 来移动其中的元素。下面展示了如何利用 <code>copy</code> 向 slice 中插入一个值：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#75715e">// Insert inserts the value into the slice at the specified index,
+</span><span style="color:#75715e">// which must be in range.
+</span><span style="color:#75715e">// The slice must have room for the new element.
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Insert</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">int</span>, <span style="color:#a6e22e">index</span>, <span style="color:#a6e22e">value</span> <span style="color:#66d9ef">int</span>) []<span style="color:#66d9ef">int</span> {
+    <span style="color:#75715e">// Grow the slice by one element.
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">0</span> : len(<span style="color:#a6e22e">slice</span>)<span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>]
+    <span style="color:#75715e">// Use copy to move the upper part of the slice out of the way and open a hole.
+</span><span style="color:#75715e"></span>    copy(<span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">index</span><span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>:], <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">index</span>:])
+    <span style="color:#75715e">// Store the new value.
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">index</span>] = <span style="color:#a6e22e">value</span>
+    <span style="color:#75715e">// Return the result.
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">slice</span>
+}
+</code></pre></div><p>There are a couple of things to notice in this function. First, of course, it must return the updated slice because its length has changed. Second, it uses a convenient shorthand. The expression</p>
+<p>在上面的函数中有许多值得我们注意的点。首先，由于 slice 的长度发生了变化，该函数必须返回更新后的 slice。其次，在该函数中，我们使用了一种省事的写法：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">i</span>:]
+</code></pre></div><p>means exactly the same as</p>
+<p>它和下面的写法等价：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">i</span>:len(<span style="color:#a6e22e">slice</span>)]
+</code></pre></div><p>Also, although we haven&rsquo;t used the trick yet, we can leave out the first element of a slice expression too; it defaults to zero. Thus</p>
+<p>虽然我们还没有用过这种小技巧，不过我们可以把起始下标省去，这样就默认从 0 开始。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span>[:]
+</code></pre></div><p>just means the slice itself, which is useful when slicing an array. This expression is the shortest way to say &ldquo;a slice describing all the elements of the array&rdquo;:</p>
+<p>因此上方代码便表示 slice 自身，这在我们对 array 进行切片时是很有用的。这样的表达式极为简要地表现出“一个描述所有数组元素的 slice”的含义：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">array</span>[:]
+</code></pre></div><p>Now that&rsquo;s out of the way, let&rsquo;s run our <code>Insert</code> function.</p>
+<p>现在回过头来运行一下我们的 <code>Insert</code> 函数。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, <span style="color:#ae81ff">10</span>, <span style="color:#ae81ff">20</span>) <span style="color:#75715e">// Note capacity &gt; length: room to add element.
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#66d9ef">range</span> <span style="color:#a6e22e">slice</span> {
+        <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">i</span>] = <span style="color:#a6e22e">i</span>
+    }
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">Insert</span>(<span style="color:#a6e22e">slice</span>, <span style="color:#ae81ff">5</span>, <span style="color:#ae81ff">99</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice</span>)
+</code></pre></div><h3 id="append-an-examplehttpsbloggolangorgslicestoc_9"><a href="https://blog.golang.org/slices#TOC_9.">Append: An example</a><a hidden class="anchor" aria-hidden="true" href="#append-an-examplehttpsbloggolangorgslicestoc_9">#</a></h3>
+<p><code>append</code>：一个例子</p>
+<p>A few sections back, we wrote an <code>Extend</code> function that extends a slice by one element. It was buggy, though, because if the slice&rsquo;s capacity was too small, the function would crash. (Our <code>Insert</code> example has the same problem.) Now we have the pieces in place to fix that, so let&rsquo;s write a robust implementation of <code>Extend</code> for integer slices.</p>
+<p>在前面的小节中，我们写了 <code>Extend</code> 函数来实现向 slice 扩展一个元素的功能，但这个函数是有 bug 的。如果 slice 的 capacity 过小，这个函数会导致程序崩溃。（<code>Insert</code> 例子也有相同的问题。）现在我们把之前的 <code>Extend</code> 函数拿来 fix bug，以实现出一个健壮的 <code>Extend</code> 函数。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Extend</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">int</span>, <span style="color:#a6e22e">element</span> <span style="color:#66d9ef">int</span>) []<span style="color:#66d9ef">int</span> {
+    <span style="color:#a6e22e">n</span> <span style="color:#f92672">:=</span> len(<span style="color:#a6e22e">slice</span>)
+    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">n</span> <span style="color:#f92672">==</span> cap(<span style="color:#a6e22e">slice</span>) {
+        <span style="color:#75715e">// Slice is full; must grow.
+</span><span style="color:#75715e"></span>        <span style="color:#75715e">// Slice 满了，必须增长。
+</span><span style="color:#75715e"></span>        <span style="color:#75715e">// We double its size and add 1, so if the size is zero we still grow.
+</span><span style="color:#75715e"></span>        <span style="color:#75715e">// 将 slice 的 capacity 倍增并加 1，这样若 size 为 0 也能正常增长。
+</span><span style="color:#75715e"></span>        <span style="color:#a6e22e">newSlice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, len(<span style="color:#a6e22e">slice</span>), <span style="color:#ae81ff">2</span><span style="color:#f92672">*</span>len(<span style="color:#a6e22e">slice</span>)<span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>)
+        copy(<span style="color:#a6e22e">newSlice</span>, <span style="color:#a6e22e">slice</span>)
+        <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">newSlice</span>
+    }
+    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">0</span> : <span style="color:#a6e22e">n</span><span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>]
+    <span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">n</span>] = <span style="color:#a6e22e">element</span>
+    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">slice</span>
+}
+</code></pre></div><p>In this case it&rsquo;s especially important to return the slice, since when it reallocates the resulting slice describes a completely different array. Here&rsquo;s a little snippet to demonstrate what happens as the slice fills up:</p>
+<p>在上面的代码中，由于我们为所要得到的 slice 重新分配了底层数组，该数组与此前的底层数组完全不同，故返回 slice 极为重要。下面的代码佐证了当 slice 填满时所发生的情况：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">5</span>)
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span> <span style="color:#f92672">:=</span> <span style="color:#ae81ff">0</span>; <span style="color:#a6e22e">i</span> &lt; <span style="color:#ae81ff">10</span>; <span style="color:#a6e22e">i</span><span style="color:#f92672">++</span> {
+        <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">Extend</span>(<span style="color:#a6e22e">slice</span>, <span style="color:#a6e22e">i</span>)
+        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;len=%d cap=%d slice=%v\n&#34;</span>, len(<span style="color:#a6e22e">slice</span>), cap(<span style="color:#a6e22e">slice</span>), <span style="color:#a6e22e">slice</span>)
+        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;address of 0th element:&#34;</span>, <span style="color:#f92672">&amp;</span><span style="color:#a6e22e">slice</span>[<span style="color:#ae81ff">0</span>])
+    }
+</code></pre></div><p>Notice the reallocation when the initial array of size 5 is filled up. Both the capacity and the address of the zeroth element change when the new array is allocated.</p>
+<p>请注意，当初始化时的底层数组被填满后，我们需要重新分配底层数组，这时 slice 的 capacity 和首元素地址均发生了改变。</p>
+<p>With the robust <code>Extend</code> function as a guide we can write an even nicer function that lets us extend the slice by multiple elements. To do this, we use Go&rsquo;s ability to turn a list of function arguments into a slice when the function is called. That is, we use Go&rsquo;s variadic function facility.</p>
+<p>借助上述健壮的 <code>Extend</code> 函数的引导，我们可以写出更棒的函数以实现扩展多个元素的功能。为了做到这一点，我们利用了 Go 语言的一个能力——在函数被调用时将一串参数转换为 slice，即可变参数函数机制。</p>
+<p>Let&rsquo;s call the function <code>Append</code>. For the first version, we can just call <code>Extend</code> repeatedly so the mechanism of the variadic function is clear. The signature of <code>Append</code> is this:</p>
+<p>我们把可以实现向 slice 中扩展多个元素的函数叫做 <code>Append</code>。在其第一个实现版本中，我们先重复地调用 <code>Extend</code>，这样一来可变参数函数的机理显得较为清晰。<code>Append</code> 的函数签名如下：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Append</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">int</span>, <span style="color:#a6e22e">items</span> <span style="color:#f92672">...</span><span style="color:#66d9ef">int</span>) []<span style="color:#66d9ef">int</span>
+</code></pre></div><p>What that says is that <code>Append</code> takes one argument, a slice, followed by zero or more <code>int</code> arguments. Those arguments are exactly a slice of <code>int</code> as far as the implementation of <code>Append</code> is concerned, as you can see:</p>
+<p>这表明 <code>Append</code> 需要一个 slice 参数和零个或多个 <code>int</code> 型参数，在 <code>Append</code> 的实现中，这些 <code>int</code> 型参数与 <code>int</code> 型 slice 无异：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#75715e">// Append appends the items to the slice.
+</span><span style="color:#75715e">// First version: just loop calling Extend.
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Append</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">int</span>, <span style="color:#a6e22e">items</span> <span style="color:#f92672">...</span><span style="color:#66d9ef">int</span>) []<span style="color:#66d9ef">int</span> {
+    <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">_</span>, <span style="color:#a6e22e">item</span> <span style="color:#f92672">:=</span> <span style="color:#66d9ef">range</span> <span style="color:#a6e22e">items</span> {
+        <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">Extend</span>(<span style="color:#a6e22e">slice</span>, <span style="color:#a6e22e">item</span>)
+    }
+    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">slice</span>
+}
+</code></pre></div><p>Notice the <code>for</code> <code>range</code> loop iterating over the elements of the <code>items</code> argument, which has implied type <code>[]int</code>. Also notice the use of the blank identifier <code>_</code> to discard the index in the loop, which we don&rsquo;t need in this case.</p>
+<p>请注意，在 <code>for range</code> 循环中访问的 <code>items</code> 参数的隐式类型为 <code>[]int</code>。此外，由于在此用不到下标，我们可用空白标识符 <code>_</code> 忽略它们。</p>
+<p>Try it:</p>
+<p>试着运行：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">2</span>, <span style="color:#ae81ff">3</span>, <span style="color:#ae81ff">4</span>}
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">Append</span>(<span style="color:#a6e22e">slice</span>, <span style="color:#ae81ff">5</span>, <span style="color:#ae81ff">6</span>, <span style="color:#ae81ff">7</span>, <span style="color:#ae81ff">8</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice</span>)
+</code></pre></div><p>Another new technique in this example is that we initialize the slice by writing a composite literal, which consists of the type of the slice followed by its elements in braces:</p>
+<p>从这个例子中我们可以学到一个新的技巧：在初始化 slice 的时候可以像下面这样在大括号中直接写出其所含的元素：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">2</span>, <span style="color:#ae81ff">3</span>, <span style="color:#ae81ff">4</span>}
+</code></pre></div><p>The <code>Append</code> function is interesting for another reason. Not only can we append elements, we can append a whole second slice by &ldquo;exploding&rdquo; the slice into arguments using the <code>...</code> notation at the call site:</p>
+<p><code>Append</code> 函数还有一点也很有趣，除了可以添加元素外，我们可以用 <code>...</code> 符号将另一个 slice 打开而将其全部添加到 slice 中：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice1</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">2</span>, <span style="color:#ae81ff">3</span>, <span style="color:#ae81ff">4</span>}
+    <span style="color:#a6e22e">slice2</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">55</span>, <span style="color:#ae81ff">66</span>, <span style="color:#ae81ff">77</span>}
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice1</span>)
+    <span style="color:#a6e22e">slice1</span> = <span style="color:#a6e22e">Append</span>(<span style="color:#a6e22e">slice1</span>, <span style="color:#a6e22e">slice2</span><span style="color:#f92672">...</span>) <span style="color:#75715e">// The &#39;...&#39; is essential!
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice1</span>)
+</code></pre></div><p>Of course, we can make <code>Append</code> more efficient by allocating no more than once, building on the innards of <code>Extend</code>:</p>
+<p>当然，我们可以将只分配至多一次空间以使得 <code>Append</code> 更加高效，在 <code>Extend</code> 中动动手脚：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#75715e">// Append appends the elements to the slice.
+</span><span style="color:#75715e">// Efficient version.
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">Append</span>(<span style="color:#a6e22e">slice</span> []<span style="color:#66d9ef">int</span>, <span style="color:#a6e22e">elements</span> <span style="color:#f92672">...</span><span style="color:#66d9ef">int</span>) []<span style="color:#66d9ef">int</span> {
+    <span style="color:#a6e22e">n</span> <span style="color:#f92672">:=</span> len(<span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">total</span> <span style="color:#f92672">:=</span> len(<span style="color:#a6e22e">slice</span>) <span style="color:#f92672">+</span> len(<span style="color:#a6e22e">elements</span>)
+    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">total</span> &gt; cap(<span style="color:#a6e22e">slice</span>) {
+        <span style="color:#75715e">// Reallocate. Grow to 1.5 times the new size, so we can still grow.
+</span><span style="color:#75715e"></span>        <span style="color:#a6e22e">newSize</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">total</span><span style="color:#f92672">*</span><span style="color:#ae81ff">3</span><span style="color:#f92672">/</span><span style="color:#ae81ff">2</span> <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>
+        <span style="color:#a6e22e">newSlice</span> <span style="color:#f92672">:=</span> make([]<span style="color:#66d9ef">int</span>, <span style="color:#a6e22e">total</span>, <span style="color:#a6e22e">newSize</span>)
+        copy(<span style="color:#a6e22e">newSlice</span>, <span style="color:#a6e22e">slice</span>)
+        <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">newSlice</span>
+    }
+    <span style="color:#a6e22e">slice</span> = <span style="color:#a6e22e">slice</span>[:<span style="color:#a6e22e">total</span>]
+    copy(<span style="color:#a6e22e">slice</span>[<span style="color:#a6e22e">n</span>:], <span style="color:#a6e22e">elements</span>)
+    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">slice</span>
+}
+</code></pre></div><p>Here, notice how we use <code>copy</code> twice, once to move the slice data to the newly allocated memory, and then to copy the appending items to the end of the old data.</p>
+<p>请注意两次 <code>copy</code> 是如何使用的，一次是把原 slice 的数据拷贝到新分配的 array 中，另一次是将要添加的元素拷贝到原数据的末尾处。</p>
+<p>Try it; the behavior is the same as before:</p>
+<p>试着跑一下，结果与此前相同：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#a6e22e">slice1</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">2</span>, <span style="color:#ae81ff">3</span>, <span style="color:#ae81ff">4</span>}
+    <span style="color:#a6e22e">slice2</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">55</span>, <span style="color:#ae81ff">66</span>, <span style="color:#ae81ff">77</span>}
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice1</span>)
+    <span style="color:#a6e22e">slice1</span> = <span style="color:#a6e22e">Append</span>(<span style="color:#a6e22e">slice1</span>, <span style="color:#a6e22e">slice2</span><span style="color:#f92672">...</span>) <span style="color:#75715e">// The &#39;...&#39; is essential!
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#a6e22e">slice1</span>)
+</code></pre></div><h3 id="append-the-built-in-functionhttpsbloggolangorgslicestoc_10"><a href="https://blog.golang.org/slices#TOC_10.">Append: The built-in function</a><a hidden class="anchor" aria-hidden="true" href="#append-the-built-in-functionhttpsbloggolangorgslicestoc_10">#</a></h3>
+<p>内置函数 <code>append</code></p>
+<p>And so we arrive at the motivation for the design of the <code>append</code> built-in function. It does exactly what our <code>Append</code> example does, with equivalent efficiency, but it works for any slice type.</p>
+<p>目前，我们有足够的动力来设计内置函数 <code>append</code> 了。<code>append</code> 函数与此前的 <code>Append</code> 示例所做的事情一致，且同样高效，但它支持任意类型的 slice。</p>
+<p>A weakness of Go is that any generic-type operations must be provided by the run-time. Some day that may change, but for now, to make working with slices easier, Go provides a built-in generic <code>append</code> function. It works the same as our <code>int</code> slice version, but for <em>any</em> slice type.</p>
+<p>任意泛型操作都必须在运行时提供是 Go 语言的不足之一。或许有天这点会发生改变（译注：快了快了，Go 1.18 应该就支持泛型了），至少到目前为之，为了使得操作 slice 更为简单，Go 提供了通用的内置函数 <code>append</code>，它和我们 <code>int</code> 型 slice 版本的 <code>Append</code> 相同，但支持任意类型。</p>
+<p>Remember, since the slice header is always updated by a call to <code>append</code>, you need to save the returned slice after the call. In fact, the compiler won&rsquo;t let you call append without saving the result.</p>
+<p>请记住，由于调用 <code>append</code> 总是会改变 slice header，你需要在调用 <code>append</code> 后保存其返回值。事实上，编译器要求你必须保存其返回值。</p>
+<p>Here are some one-liners intermingled with print statements. Try them, edit them and explore:</p>
+<p>下面是些关于调用 <code>append</code> 的例子，每次调用后会输出结果，运行并修改试试：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go">    <span style="color:#75715e">// Create a couple of starter slices.
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">1</span>, <span style="color:#ae81ff">2</span>, <span style="color:#ae81ff">3</span>}
+    <span style="color:#a6e22e">slice2</span> <span style="color:#f92672">:=</span> []<span style="color:#66d9ef">int</span>{<span style="color:#ae81ff">55</span>, <span style="color:#ae81ff">66</span>, <span style="color:#ae81ff">77</span>}
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Start slice: &#34;</span>, <span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Start slice2:&#34;</span>, <span style="color:#a6e22e">slice2</span>)
+
+    <span style="color:#75715e">// Add an item to a slice.
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">slice</span> = append(<span style="color:#a6e22e">slice</span>, <span style="color:#ae81ff">4</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Add one item:&#34;</span>, <span style="color:#a6e22e">slice</span>)
+
+    <span style="color:#75715e">// Add one slice to another.
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">slice</span> = append(<span style="color:#a6e22e">slice</span>, <span style="color:#a6e22e">slice2</span><span style="color:#f92672">...</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Add one slice:&#34;</span>, <span style="color:#a6e22e">slice</span>)
+
+    <span style="color:#75715e">// Make a copy of a slice (of int).
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">slice3</span> <span style="color:#f92672">:=</span> append([]int(<span style="color:#66d9ef">nil</span>), <span style="color:#a6e22e">slice</span><span style="color:#f92672">...</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Copy a slice:&#34;</span>, <span style="color:#a6e22e">slice3</span>)
+
+    <span style="color:#75715e">// Copy a slice to the end of itself.
+</span><span style="color:#75715e"></span>    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Before append to self:&#34;</span>, <span style="color:#a6e22e">slice</span>)
+    <span style="color:#a6e22e">slice</span> = append(<span style="color:#a6e22e">slice</span>, <span style="color:#a6e22e">slice</span><span style="color:#f92672">...</span>)
+    <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;After append to self:&#34;</span>, <span style="color:#a6e22e">slice</span>)
+</code></pre></div><p>It&rsquo;s worth taking a moment to think about the final one-liner of that example in detail to understand how the design of slices makes it possible for this simple call to work correctly.</p>
+<p>上面的最后一个 <code>append</code> 例子值得花时间仔细思考一下，slice 的设计是如何使得这样的简单调用可行的。</p>
+<p>There are lots more examples of <code>append</code>, <code>copy</code>, and other ways to use slices on the community-built <a href="https://golang.org/wiki/SliceTricks">&ldquo;Slice Tricks&rdquo; Wiki page</a>.</p>
+<p>在 <a href="https://golang.org/wiki/SliceTricks">&ldquo;Slice Tricks&rdquo; Wiki page</a> 上有许多使用 <code>append</code>、<code>copy</code> 和其他方式来操作 slice 的小技巧。</p>
+<h3 id="nilhttpsbloggolangorgslicestoc_11"><a href="https://blog.golang.org/slices#TOC_11.">Nil</a><a hidden class="anchor" aria-hidden="true" href="#nilhttpsbloggolangorgslicestoc_11">#</a></h3>
+<p><code>nil</code></p>
+<p>As an aside, with our newfound knowledge we can see what the representation of a <code>nil</code> slice is. Naturally, it is the zero value of the slice header:</p>
+<p>说句题外话，以我们新学到的知识，我们可以表示出 <code>nil</code> slice。自然地，该 slice 的 header 中的值均为其类型所对应的零值：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">sliceHeader</span>{
+    <span style="color:#a6e22e">Length</span>:        <span style="color:#ae81ff">0</span>,
+    <span style="color:#a6e22e">Capacity</span>:      <span style="color:#ae81ff">0</span>,
+    <span style="color:#a6e22e">ZerothElement</span>: <span style="color:#66d9ef">nil</span>,
+}
+</code></pre></div><p>or just</p>
+<p>或写作</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">sliceHeader</span>{}
+</code></pre></div><p>The key detail is that the element pointer is <code>nil</code> too. The slice created by</p>
+<p>重点在于指向元素数组的指针也为 <code>nil</code>。如此创建的 slice</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">array</span>[<span style="color:#ae81ff">0</span>:<span style="color:#ae81ff">0</span>]
+</code></pre></div><p>has length zero (and maybe even capacity zero) but its pointer is not <code>nil</code>, so it is not a nil slice.</p>
+<p>长度为 0 （或许 capacity 也为 0）但其指针不为 <code>nil</code> （译注：指向 array），故其不为 nil slice。</p>
+<p>As should be clear, an empty slice can grow (assuming it has non-zero capacity), but a <code>nil</code> slice has no array to put values in and can never grow to hold even one element.</p>
+<p>应当区分清楚的是，一个 空 slice 可以增长 （设其 capacity 不为 0），但一个 <code>nil</code> slice 不指向任何 array，故而无法增长以存储元素。</p>
+<p>That said, a <code>nil</code> slice is functionally equivalent to a zero-length slice, even though it points to nothing. It has length zero and can be appended to, with allocation. As an example, look at the one-liner above that copies a slice by appending to a <code>nil</code> slice.</p>
+<p>也就是说，即使 <code>nil</code> slice 不指向任何数组，但其在功能上和零长 slice 等价。<code>nil</code> slice 长度为 0，且可以通过分配底层数组的方式向其中添加元素，例如上面 <code>append</code> 例子中的倒数第二个，即向 <code>nil</code> slice 中拷贝 slice 的元素。</p>
+<h3 id="stringshttpsbloggolangorgslicestoc_12"><a href="https://blog.golang.org/slices#TOC_12.">Strings</a><a hidden class="anchor" aria-hidden="true" href="#stringshttpsbloggolangorgslicestoc_12">#</a></h3>
+<p>字符串</p>
+<p>Now a brief section about strings in Go in the context of slices.</p>
+<p>现在来简要介绍一下 Go 中字符串的 slice 背景。</p>
+<p>Strings are actually very simple: they are just read-only slices of bytes with a bit of extra syntactic support from the language.</p>
+<p>字符串真的很简单：它们是具有一些来自于 Go 语言额外句法支持的字节所组成的只读型 slice。</p>
+<p>Because they are read-only, there is no need for a capacity (you can&rsquo;t grow them), but otherwise for most purposes you can treat them just like read-only slices of bytes.</p>
+<p>由于字符串 slice 是只读的，因此就不需要 capacity 了（你也没法增长字符串），但对于绝大多数情况，你都可以将它们视作只读字节 slice 来处理。</p>
+<p>For starters, we can index them to access individual bytes:</p>
+<p>首先，我们可以用下标访问其中某个字节：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slash</span> <span style="color:#f92672">:=</span> <span style="color:#e6db74">&#34;/usr/ken&#34;</span>[<span style="color:#ae81ff">0</span>] <span style="color:#75715e">// yields the byte value &#39;/&#39;.
+</span></code></pre></div><p>We can slice a string to grab a substring:</p>
+<p>可以切片得到子串：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">usr</span> <span style="color:#f92672">:=</span> <span style="color:#e6db74">&#34;/usr/ken&#34;</span>[<span style="color:#ae81ff">0</span>:<span style="color:#ae81ff">4</span>] <span style="color:#75715e">// yields the string &#34;/usr&#34;
+</span></code></pre></div><p>It should be obvious now what&rsquo;s going on behind the scenes when we slice a string.</p>
+<p>我们对字符串切片的背后究竟如何应当是显而易见的。</p>
+<p>We can also take a normal slice of bytes and create a string from it with the simple conversion:</p>
+<p>我们还可以将一个普通的字节 slice 转换为字符串：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">str</span> <span style="color:#f92672">:=</span> string(<span style="color:#a6e22e">slice</span>)
+</code></pre></div><p>and go in the reverse direction as well:</p>
+<p>也可反过来转换：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#a6e22e">slice</span> <span style="color:#f92672">:=</span> []byte(<span style="color:#a6e22e">usr</span>)
+</code></pre></div><p>The array underlying a string is hidden from view; there is no way to access its contents except through the string. That means that when we do either of these conversions, a copy of the array must be made. Go takes care of this, of course, so you don&rsquo;t have to. After either of these conversions, modifications to the array underlying the byte slice don&rsquo;t affect the corresponding string.</p>
+<p>字符串背后的底层数组是不可见的，除了通过字符串之外，我们没有办法访问该数组的内容。这意味着我们上述的转换都会引发对底层数组的拷贝。Go 对这一点十分在意，当然，你不必如此关心。在转换之后，对于字节 slice 的底层数组的修改不会影响其对应的字符串。</p>
+<p>An important consequence of this slice-like design for strings is that creating a substring is very efficient. All that needs to happen is the creation of a two-word string header. Since the string is read-only, the original string and the string resulting from the slice operation can share the same array safely.</p>
+<p>如此设计类 slice 的字符串的重要影响是使得子串的创建很高效，这样的操作只需要创建具有两个元素的字符串 header。由于字符串是只读的，对于原字符串和经过 slice 操作后所得的字符串可以安全地共享同一数组。</p>
+<p>A historical note: The earliest implementation of strings always allocated, but when slices were added to the language, they provided a model for efficient string handling. Some of the benchmarks saw huge speedups as a result.</p>
+<p>历史注：最早期的字符串实现方式总是会分配空间，但当 slice 被引入到 Go 语言后，它为高效的字符串操作提供了范例，原先一些巨量的基准测试速度因此加快了。</p>
+<p>There&rsquo;s much more to strings, of course, and a <a href="https://blog.golang.org/strings">separate blog post</a> covers them in greater depth.</p>
+<p>有许多关于字符串的讨论，<a href="https://blog.golang.org/strings">separate blog post</a> 中更进一步涵盖了它们。</p>
+<h3 id="conclusionhttpsbloggolangorgslicestoc_13"><a href="https://blog.golang.org/slices#TOC_13.">Conclusion</a><a hidden class="anchor" aria-hidden="true" href="#conclusionhttpsbloggolangorgslicestoc_13">#</a></h3>
+<p>结论</p>
+<p>To understand how slices work, it helps to understand how they are implemented. There is a little data structure, the slice header, that is the item associated with the slice variable, and that header describes a section of a separately allocated array. When we pass slice values around, the header gets copied but the array it points to is always shared.</p>
+<p>了解 slice 的运行方式能够帮助我们更好地理解它们的实现。在 Go 语言中，slice header 是一个小型的数据结构，元素与 slice 变量相联系，而 slice header 描述了与 slice 变量分开存储的所分配数组的片段。当我们传递 slice 的值的时候，slice header 会被拷贝，但其所指的底层数组总是共享的。</p>
+<p>Once you appreciate how they work, slices become not only easy to use, but powerful and expressive, especially with the help of the <code>copy</code> and <code>append</code> built-in functions.</p>
+<p>当你领会了 slice 的运行方式之后，slice 不仅简单好用，而且强大并富有表现力，尤其是在与内置函数 <code>copy</code> 和 <code>append</code> 配合使用的时候。</p>
+<h3 id="more-readinghttpsbloggolangorgslicestoc_14"><a href="https://blog.golang.org/slices#TOC_14.">More reading</a><a hidden class="anchor" aria-hidden="true" href="#more-readinghttpsbloggolangorgslicestoc_14">#</a></h3>
+<p>There&rsquo;s lots to find around the intertubes about slices in Go. As mentioned earlier, the <a href="https://golang.org/wiki/SliceTricks">&ldquo;Slice Tricks&rdquo; Wiki page</a> has many examples. The <a href="https://blog.golang.org/go-slices-usage-and-internals">Go Slices</a> blog post describes the memory layout details with clear diagrams. Russ Cox&rsquo;s <a href="https://research.swtch.com/godata">Go Data Structures</a> article includes a discussion of slices along with some of Go&rsquo;s other internal data structures.</p>
+<p>There is much more material available, but the best way to learn about slices is to use them.</p>
+
+</div>
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="https://lachimere.github.io/tags/array/">array</a></li>
+      <li><a href="https://lachimere.github.io/tags/slice/">slice</a></li>
+      <li><a href="https://lachimere.github.io/tags/append/">append</a></li>
+    </ul>
+<nav class="paginav">
+  <a class="next" href="https://lachimere.github.io/posts/algorithms/kmp/">
+    <span class="title">Next Page »</span>
+    <br>
+    <span>KMP 算法模板</span>
+  </a>
+</nav>
+
+  </footer>
+</article>
+    </main>
+    <footer class="footer">
+    <span>&copy; 2021 <a href="https://lachimere.github.io/">LaChimere</a></span>
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)">
+    <button class="top-link" id="top-link" type="button" accesskey="g">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+            <path d="M12 6H0l6-6z" />
+        </svg>
+    </button>
+</a>
+
+<script>
+    let menu = document.getElementById('menu')
+    menu.scrollLeft = localStorage.getItem("menu-scroll-position");
+    menu.onscroll = function () {
+        localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+</body>
+
+</html>

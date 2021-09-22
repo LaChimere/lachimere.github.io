@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>array on LaChimere</title>
+    <link>https://lachimere.github.io/tags/array/</link>
+    <description>Recent content in array on LaChimere</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <lastBuildDate>Tue, 13 Jul 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://lachimere.github.io/tags/array/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Arrays, slices (and strings): The mechanics of &#39;append&#39;</title>
+      <link>https://lachimere.github.io/posts/golang/arrays-slices-and-strings-the-mechanics-of-append/</link>
+      <pubDate>Tue, 13 Jul 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://lachimere.github.io/posts/golang/arrays-slices-and-strings-the-mechanics-of-append/</guid>
+      <description>【The Go Blog】数组、切片（和字符串）——&lt;code&gt;append&lt;/code&gt; 的方法</description>
+    </item>
+    
+  </channel>
+</rss>
